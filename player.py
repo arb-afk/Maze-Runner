@@ -175,6 +175,7 @@ class AIAgent:
         self.is_moving = False
         self.move_history = []  # For undo: stores (position, cost, total_cost_before)
         self.reached_checkpoints = []  # Track AI checkpoints for checkpoint mode
+        self.visited_cells = {start_pos}  # Track all cells AI has actually visited
     
     def reset(self, start_pos):
         """Reset AI to start position"""
@@ -185,6 +186,7 @@ class AIAgent:
         self.path_result = None
         self.move_history = []
         self.reached_checkpoints = []
+        self.visited_cells = {start_pos}
     
     def get_position(self):
         """Get current position"""
@@ -272,6 +274,10 @@ class AIAgent:
         
         # Get last move
         last_move = self.move_history.pop()
+        
+        # Remove from visited cells
+        if hasattr(self, 'visited_cells'):
+            self.visited_cells.discard(last_move['new_pos'])
         
         # Restore previous position
         self.x, self.y = last_move['old_pos']

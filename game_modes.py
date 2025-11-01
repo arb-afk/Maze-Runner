@@ -92,18 +92,29 @@ class GameState:
                         self.ai_agent.compute_path(self.maze.goal_pos, algorithm=AI_ALGORITHM, discovered_cells=discovered_cells)
         
         # Initialize AI's discovered cells if fog of war is enabled and AI exists
+        # AI has much smaller visibility radius (only 1 cell) compared to player
         if self.fog_of_war and self.ai_agent:
             ai_x, ai_y = self.ai_agent.get_position()
-            from config import FOG_OF_WAR_RADIUS
+            from config import AI_FOG_OF_WAR_RADIUS
             # Discover cells around AI's starting position
             ai_cell_x = max(0, min(ai_x, self.maze.width - 1))
             ai_cell_y = max(0, min(ai_y, self.maze.height - 1))
             
-            for y in range(max(0, ai_cell_y - FOG_OF_WAR_RADIUS), min(self.maze.height, ai_cell_y + FOG_OF_WAR_RADIUS + 1)):
-                for x in range(max(0, ai_cell_x - FOG_OF_WAR_RADIUS), min(self.maze.width, ai_cell_x + FOG_OF_WAR_RADIUS + 1)):
+            for y in range(max(0, ai_cell_y - AI_FOG_OF_WAR_RADIUS), min(self.maze.height, ai_cell_y + AI_FOG_OF_WAR_RADIUS + 1)):
+                for x in range(max(0, ai_cell_x - AI_FOG_OF_WAR_RADIUS), min(self.maze.width, ai_cell_x + AI_FOG_OF_WAR_RADIUS + 1)):
                     distance = abs(x - ai_x) + abs(y - ai_y)
-                    if distance <= FOG_OF_WAR_RADIUS:
+                    if distance <= AI_FOG_OF_WAR_RADIUS:
                         self.ai_discovered_cells.add((x, y))
+            
+            # Always discover the entry/exit cell if AI is at start/goal outside maze
+            if ai_x < 0:  # AI at start_pos outside maze
+                entry_x, entry_y = 0, self.maze.height // 2
+                if self.maze.is_valid(entry_x, entry_y):
+                    self.ai_discovered_cells.add((entry_x, entry_y))
+            elif ai_x >= self.maze.width:  # AI at goal_pos outside maze
+                exit_x, exit_y = self.maze.width - 1, self.maze.height // 2
+                if self.maze.is_valid(exit_x, exit_y):
+                    self.ai_discovered_cells.add((exit_x, exit_y))
             
             # Recompute path with fog restrictions now that discovered cells are initialized
             if self.mode == 'AI Duel':
@@ -225,15 +236,17 @@ class GameState:
             if self.ai_agent:
                 ai_x, ai_y = self.ai_agent.get_position()
                 # Discover cells around AI's current position
+                # AI has much smaller visibility radius (only 1 cell) compared to player
                 # Handle case where AI is outside maze bounds
+                from config import AI_FOG_OF_WAR_RADIUS
                 ai_cell_x = max(0, min(ai_x, self.maze.width - 1))
                 ai_cell_y = max(0, min(ai_y, self.maze.height - 1))
                 
-                for y in range(max(0, ai_cell_y - FOG_OF_WAR_RADIUS), min(self.maze.height, ai_cell_y + FOG_OF_WAR_RADIUS + 1)):
-                    for x in range(max(0, ai_cell_x - FOG_OF_WAR_RADIUS), min(self.maze.width, ai_cell_x + FOG_OF_WAR_RADIUS + 1)):
+                for y in range(max(0, ai_cell_y - AI_FOG_OF_WAR_RADIUS), min(self.maze.height, ai_cell_y + AI_FOG_OF_WAR_RADIUS + 1)):
+                    for x in range(max(0, ai_cell_x - AI_FOG_OF_WAR_RADIUS), min(self.maze.width, ai_cell_x + AI_FOG_OF_WAR_RADIUS + 1)):
                         # Calculate distance from actual AI position (may be outside maze)
                         distance = abs(x - ai_x) + abs(y - ai_y)
-                        if distance <= FOG_OF_WAR_RADIUS:
+                        if distance <= AI_FOG_OF_WAR_RADIUS:
                             self.ai_discovered_cells.add((x, y))
         
         # Obstacles are now only updated on player/AI movement, not continuously
@@ -303,25 +316,171 @@ class GameState:
             
             # IMPORTANT: Update AI's discovered cells BEFORE pathfinding (if fog of war enabled)
             # This ensures AI sees its current position before computing path
+            # AI has much smaller visibility radius (only 1 cell) compared to player
             if self.fog_of_war:
                 ai_x, ai_y = self.ai_agent.get_position()
-                from config import FOG_OF_WAR_RADIUS
+                from config import AI_FOG_OF_WAR_RADIUS
                 ai_cell_x = max(0, min(ai_x, self.maze.width - 1))
                 ai_cell_y = max(0, min(ai_y, self.maze.height - 1))
                 
-                for y in range(max(0, ai_cell_y - FOG_OF_WAR_RADIUS), min(self.maze.height, ai_cell_y + FOG_OF_WAR_RADIUS + 1)):
-                    for x in range(max(0, ai_cell_x - FOG_OF_WAR_RADIUS), min(self.maze.width, ai_cell_x + FOG_OF_WAR_RADIUS + 1)):
+                for y in range(max(0, ai_cell_y - AI_FOG_OF_WAR_RADIUS), min(self.maze.height, ai_cell_y + AI_FOG_OF_WAR_RADIUS + 1)):
+                    for x in range(max(0, ai_cell_x - AI_FOG_OF_WAR_RADIUS), min(self.maze.width, ai_cell_x + AI_FOG_OF_WAR_RADIUS + 1)):
                         distance = abs(x - ai_x) + abs(y - ai_y)
-                        if distance <= FOG_OF_WAR_RADIUS:
+                        if distance <= AI_FOG_OF_WAR_RADIUS:
                             self.ai_discovered_cells.add((x, y))
+                
+                # Always ensure entry/exit cells are discovered if AI is at start/goal
+                if ai_x < 0:  # AI at start_pos
+                    entry_x, entry_y = 0, self.maze.height // 2
+                    if self.maze.is_valid(entry_x, entry_y):
+                        self.ai_discovered_cells.add((entry_x, entry_y))
+                elif ai_x >= self.maze.width:  # AI at goal_pos
+                    exit_x, exit_y = self.maze.width - 1, self.maze.height // 2
+                    if self.maze.is_valid(exit_x, exit_y):
+                        self.ai_discovered_cells.add((exit_x, exit_y))
+                    # Also discover the goal position itself
+                    if self.maze.goal_pos:
+                        self.ai_discovered_cells.add(self.maze.goal_pos)
             
-            # Check if replanning needed (handle list goals)
+            # Always recompute path if fog is enabled and we don't have a valid path
+            # (This ensures AI continues moving even if path was computed before fog was enabled)
             check_goal = goal if not isinstance(goal, list) else goal[0] if goal else None
-            if check_goal and self.ai_agent.needs_replanning(check_goal):
+            should_replan = False
+            if check_goal:
+                # Replan if needed, OR if fog is enabled and we don't have a valid path through discovered cells
+                if self.ai_agent.needs_replanning(check_goal):
+                    should_replan = True
+                elif self.fog_of_war and (not self.ai_agent.path_result or not self.ai_agent.path_result.path_found):
+                    should_replan = True
+            
+            if should_replan:
                 # If fog of war is enabled, AI is blind - only use AI's own discovered cells
                 discovered_cells = self.ai_discovered_cells if self.fog_of_war else None
                 self.ai_agent.compute_path(goal, algorithm=algorithm, discovered_cells=discovered_cells)
+                
+                # If path not found and fog is enabled, try to explore towards goal
+                if self.fog_of_war and (not self.ai_agent.path_result or not self.ai_agent.path_result.path_found):
+                    # Find nearest accessible cell in the general direction of goal
+                    ai_x, ai_y = self.ai_agent.get_position()
+                    goal_x, goal_y = check_goal
+                    
+                    # Get all valid neighbors from current position
+                    # IMPORTANT: AI can only get neighbors from discovered cells, not from full maze structure
+                    # So we need to check what neighbors exist, but only use discovered ones
+                    neighbors = self.maze.get_neighbors(ai_x, ai_y, False)
+                    
+                    # Filter to only discovered/accessible neighbors if fog enabled
+                    # AI is blind - it can only see discovered cells
+                    accessible_neighbors = []
+                    for nx, ny in neighbors:
+                        # Check if this neighbor is accessible (discovered only, or start position)
+                        if discovered_cells is None:
+                            accessible_neighbors.append((nx, ny))
+                        else:
+                            # Only allow discovered cells (except start position which is always accessible)
+                            if (nx, ny) == self.maze.start_pos:
+                                accessible_neighbors.append((nx, ny))
+                            elif (nx, ny) in discovered_cells:
+                                # All discovered cells are accessible
+                                accessible_neighbors.append((nx, ny))
+                            elif (nx, ny) == check_goal:
+                                # Goal position is only accessible if discovered (true blindness)
+                                if (nx, ny) in discovered_cells:
+                                    accessible_neighbors.append((nx, ny))
+                    
+                    # Find best neighbor for exploration
+                    # AI is truly blind - doesn't know goal location, must explore randomly
+                    best_next = None
+                    # Use actual visited cells from AI's history, not just current path
+                    visited_cells = self.ai_agent.visited_cells if hasattr(self.ai_agent, 'visited_cells') else set()
+                    
+                    # Only use goal direction if goal is discovered
+                    goal_discovered = check_goal in self.ai_discovered_cells
+                    
+                    if goal_discovered and accessible_neighbors:
+                        # Goal discovered - can navigate toward it
+                        # Prefer unexplored cells, but penalize recently visited cells
+                        ai_path = self.ai_agent.path if hasattr(self.ai_agent, 'path') else []
+                        min_dist = float('inf')
+                        for nx, ny in accessible_neighbors:
+                            dist_to_goal = abs(nx - goal_x) + abs(ny - goal_y)
+                            is_visited = (nx, ny) in visited_cells
+                            is_recent_visit = (nx, ny) in ai_path[-3:] if len(ai_path) >= 3 else False
+                            # Strongly prefer unexplored cells, penalize visited and recently visited
+                            score = dist_to_goal + (200 if is_visited else 0) + (100 if is_recent_visit else 0)
+                            if score < min_dist:
+                                min_dist = score
+                                best_next = (nx, ny)
+                    else:
+                        # Goal not discovered - explore randomly, STRONGLY prefer unexplored cells
+                        unexplored = [n for n in accessible_neighbors if n not in visited_cells]
+                        if unexplored:
+                            # Prefer unexplored cells
+                            import random
+                            best_next = random.choice(unexplored)
+                        elif accessible_neighbors:
+                            # All neighbors explored - backtrack intelligently
+                            # Avoid immediate back-and-forth by preferring positions further back in history
+                            ai_move_history = self.ai_agent.move_history if hasattr(self.ai_agent, 'move_history') else []
+                            current_pos = (ai_x, ai_y)
+                            
+                            # Get the immediate previous position (from last move)
+                            previous_pos = None
+                            if ai_move_history:
+                                last_move = ai_move_history[-1]
+                                previous_pos = last_move.get('old_pos')  # Position we came from
+                            
+                            # Score each neighbor: prefer positions that are further back in history
+                            scored_neighbors = []
+                            for nx, ny in accessible_neighbors:
+                                score = 1000  # Base score
+                                
+                                # Strongly penalize immediate backtrack (previous position)
+                                if (nx, ny) == previous_pos:
+                                    score = 0  # Avoid immediate back-and-forth
+                                    scored_neighbors.append((score, (nx, ny)))
+                                    continue
+                                
+                                # Check how many moves ago this position was visited
+                                found_in_history = False
+                                for i, move in enumerate(reversed(ai_move_history[-15:])):  # Look at last 15 moves
+                                    if move.get('old_pos') == (nx, ny) or move.get('new_pos') == (nx, ny):
+                                        # Further back in history = higher score (preferred for backtracking)
+                                        # Position visited 10 moves ago is better than position visited 2 moves ago
+                                        score = 100 + (15 - i) * 10  # More moves ago = higher score
+                                        found_in_history = True
+                                        break
+                                
+                                # If position is not in recent history, it might be a good backtrack target
+                                # but less preferred than positions we know we've been to
+                                if not found_in_history:
+                                    score = 50  # Lower score than known positions in history
+                                
+                                scored_neighbors.append((score, (nx, ny)))
+                            
+                            # Sort by score (highest first) and pick the best
+                            scored_neighbors.sort(reverse=True, key=lambda x: x[0])
+                            if scored_neighbors and scored_neighbors[0][0] > 0:
+                                best_next = scored_neighbors[0][1]
+                            else:
+                                # All neighbors are immediate previous position - must backtrack anyway
+                                # Choose the one furthest back in history
+                                import random
+                                best_next = random.choice(accessible_neighbors)
+                    
+                    # If we found a next cell, create a simple path to it
+                    if best_next:
+                        from pathfinding import PathfindingResult
+                        result = PathfindingResult()
+                        result.path_found = True
+                        result.path = [(ai_x, ai_y), best_next]
+                        result.cost = self.maze.get_cost(best_next[0], best_next[1])
+                        result.nodes_explored = 1
+                        self.ai_agent.path_result = result
+                        self.ai_agent.path = [(ai_x, ai_y), best_next]
+                        self.ai_agent.current_path_index = 0
             
+            # AI can move if it has a valid path
             if self.ai_agent.path_result and self.ai_agent.path_result.path_found:
                 if self.ai_agent.current_path_index < len(self.ai_agent.path) - 1:
                     self.ai_agent.current_path_index += 1
@@ -330,19 +489,27 @@ class GameState:
                     old_cost = self.ai_agent.total_cost
                     
                     self.ai_agent.x, self.ai_agent.y = next_pos
+                    # Track visited cell
+                    self.ai_agent.visited_cells.add(next_pos)
                     
                     # Discover new cells immediately after AI moves (before next path computation)
+                    # AI has much smaller visibility radius (only 1 cell) compared to player
                     if self.fog_of_war:
                         ai_x, ai_y = self.ai_agent.get_position()
-                        from config import FOG_OF_WAR_RADIUS
+                        from config import AI_FOG_OF_WAR_RADIUS
                         ai_cell_x = max(0, min(ai_x, self.maze.width - 1))
                         ai_cell_y = max(0, min(ai_y, self.maze.height - 1))
                         
-                        for y in range(max(0, ai_cell_y - FOG_OF_WAR_RADIUS), min(self.maze.height, ai_cell_y + FOG_OF_WAR_RADIUS + 1)):
-                            for x in range(max(0, ai_cell_x - FOG_OF_WAR_RADIUS), min(self.maze.width, ai_cell_x + FOG_OF_WAR_RADIUS + 1)):
+                        for y in range(max(0, ai_cell_y - AI_FOG_OF_WAR_RADIUS), min(self.maze.height, ai_cell_y + AI_FOG_OF_WAR_RADIUS + 1)):
+                            for x in range(max(0, ai_cell_x - AI_FOG_OF_WAR_RADIUS), min(self.maze.width, ai_cell_x + AI_FOG_OF_WAR_RADIUS + 1)):
                                 distance = abs(x - ai_x) + abs(y - ai_y)
-                                if distance <= FOG_OF_WAR_RADIUS:
+                                if distance <= AI_FOG_OF_WAR_RADIUS:
                                     self.ai_discovered_cells.add((x, y))
+                        
+                        # If AI is at or near the exit cell, discover the goal position
+                        if ai_x == self.maze.width - 1 and ai_y == self.maze.height // 2:
+                            if self.maze.goal_pos:
+                                self.ai_discovered_cells.add(self.maze.goal_pos)
                     
                     # Check if reached checkpoint
                     checkpoint_reached = False
@@ -391,7 +558,9 @@ class GameState:
                         
                         # Check if path needs replanning after obstacle change
                         if self.ai_agent.needs_replanning(goal):
-                            self.ai_agent.compute_path(goal)
+                            # If fog of war is enabled, AI is blind - only use AI's own discovered cells
+                            discovered_cells = self.ai_discovered_cells if self.fog_of_war else None
+                            self.ai_agent.compute_path(goal, algorithm=AI_ALGORITHM, discovered_cells=discovered_cells)
                     
                     # Switch back to player's turn
                     self.turn = 'player'
@@ -613,6 +782,23 @@ class GameState:
         if self.fog_of_war:
             # Fog turned ON - initialize discovered cells for both player and AI
             if self.player:
+                # IMPORTANT: Discover all cells the player has already visited in their path history
+                # This ensures the player "remembers" where they have been if fog is enabled mid-game
+                if hasattr(self.player, 'path') and self.player.path:
+                    for pos in self.player.path:
+                        px, py = pos
+                        from config import FOG_OF_WAR_RADIUS
+                        # Discover cells around each position in player's path history
+                        path_cell_x = max(0, min(px, self.maze.width - 1))
+                        path_cell_y = max(0, min(py, self.maze.height - 1))
+                        
+                        for y in range(max(0, path_cell_y - FOG_OF_WAR_RADIUS), min(self.maze.height, path_cell_y + FOG_OF_WAR_RADIUS + 1)):
+                            for x in range(max(0, path_cell_x - FOG_OF_WAR_RADIUS), min(self.maze.width, path_cell_x + FOG_OF_WAR_RADIUS + 1)):
+                                distance = abs(x - px) + abs(y - py)
+                                if distance <= FOG_OF_WAR_RADIUS:
+                                    self.discovered_cells.add((x, y))
+                
+                # Also discover cells around player's current position
                 px, py = self.player.get_position()
                 from config import FOG_OF_WAR_RADIUS
                 player_cell_x = max(0, min(px, self.maze.width - 1))
@@ -625,14 +811,41 @@ class GameState:
             
             if self.ai_agent:
                 ai_x, ai_y = self.ai_agent.get_position()
-                from config import FOG_OF_WAR_RADIUS
+                
+                # CRITICAL: For true blindness when fog is enabled mid-game, only discover what AI can currently see
+                # Do NOT discover entire path history - AI should "forget" where it has been
+                # This makes the AI truly blind when fog is toggled on, just like starting with fog enabled
+                from config import AI_FOG_OF_WAR_RADIUS
+                
+                # Only discover cells around AI's current position (radius 1)
+                # Handle case where AI is outside maze (at start_pos = (-1, height//2))
                 ai_cell_x = max(0, min(ai_x, self.maze.width - 1))
                 ai_cell_y = max(0, min(ai_y, self.maze.height - 1))
-                for y in range(max(0, ai_cell_y - FOG_OF_WAR_RADIUS), min(self.maze.height, ai_cell_y + FOG_OF_WAR_RADIUS + 1)):
-                    for x in range(max(0, ai_cell_x - FOG_OF_WAR_RADIUS), min(self.maze.width, ai_cell_x + FOG_OF_WAR_RADIUS + 1)):
+                
+                for y in range(max(0, ai_cell_y - AI_FOG_OF_WAR_RADIUS), min(self.maze.height, ai_cell_y + AI_FOG_OF_WAR_RADIUS + 1)):
+                    for x in range(max(0, ai_cell_x - AI_FOG_OF_WAR_RADIUS), min(self.maze.width, ai_cell_x + AI_FOG_OF_WAR_RADIUS + 1)):
+                        # Calculate distance from actual AI position (may be outside maze)
                         distance = abs(x - ai_x) + abs(y - ai_y)
-                        if distance <= FOG_OF_WAR_RADIUS:
+                        if distance <= AI_FOG_OF_WAR_RADIUS:
                             self.ai_discovered_cells.add((x, y))
+                
+                # Always discover the entry cell if AI starts outside (at start_pos)
+                if ai_x < 0:  # AI is at start_pos outside maze
+                    entry_x, entry_y = 0, self.maze.height // 2
+                    if self.maze.is_valid(entry_x, entry_y):
+                        self.ai_discovered_cells.add((entry_x, entry_y))
+                
+                # Discover goal position if AI is near exit cell or has visited it
+                exit_x, exit_y = self.maze.width - 1, self.maze.height // 2
+                if (exit_x, exit_y) in self.ai_discovered_cells and self.maze.goal_pos:
+                    self.ai_discovered_cells.add(self.maze.goal_pos)
+                
+                # CRITICAL: When fog is toggled on mid-game, invalidate the AI's existing path
+                # The old path was computed with full visibility and should not be used
+                # Force AI to recompute path with only discovered cells
+                self.ai_agent.path_result = None
+                self.ai_agent.path = []
+                self.ai_agent.current_path_index = 0
                 
                 # Recompute AI path with fog restrictions
                 if self.mode == 'AI Duel' or self.mode == 'AI Duel (Checkpoints)':
@@ -646,7 +859,124 @@ class GameState:
                             goal = unvisited + [self.maze.goal_pos]
                             algorithm = 'MULTI_OBJECTIVE'
                     
-                    self.ai_agent.compute_path(goal, algorithm=algorithm, discovered_cells=self.ai_discovered_cells)
+                    check_goal = goal if not isinstance(goal, list) else goal[0] if goal else None
+                    
+                    # Only try to pathfind if goal is discovered, otherwise pathfinding will fail
+                    # and we'll use random exploration fallback
+                    goal_discovered = check_goal in self.ai_discovered_cells if check_goal else False
+                    if goal_discovered:
+                        self.ai_agent.compute_path(goal, algorithm=algorithm, discovered_cells=self.ai_discovered_cells)
+                    else:
+                        # Goal not discovered - clear path result so fallback exploration is used
+                        self.ai_agent.path_result = None
+                    
+                    # If path not found, provide fallback exploration path
+                    if not self.ai_agent.path_result or not self.ai_agent.path_result.path_found:
+                        ai_x, ai_y = self.ai_agent.get_position()
+                        neighbors = self.maze.get_neighbors(ai_x, ai_y, False)
+                        
+                        # Filter to accessible neighbors
+                        accessible_neighbors = []
+                        for nx, ny in neighbors:
+                            if (nx, ny) == self.maze.start_pos:
+                                accessible_neighbors.append((nx, ny))
+                            elif (nx, ny) in self.ai_discovered_cells:
+                                accessible_neighbors.append((nx, ny))
+                            elif (nx, ny) == check_goal:
+                                # Goal position is only accessible if discovered (true blindness)
+                                if (nx, ny) in self.ai_discovered_cells:
+                                    accessible_neighbors.append((nx, ny))
+                        
+                        # Find best neighbor for exploration
+                        # AI is truly blind - doesn't know goal location unless discovered, must explore randomly
+                        best_next = None
+                        # Use actual visited cells from AI's history, not just current path
+                        visited_cells = self.ai_agent.visited_cells if hasattr(self.ai_agent, 'visited_cells') else set()
+                        
+                        # Only use goal direction if goal is discovered
+                        goal_discovered = check_goal in self.ai_discovered_cells if check_goal else False
+                        
+                        if accessible_neighbors:
+                            if goal_discovered and check_goal:
+                                # Goal discovered - can navigate toward it
+                                # Prefer unexplored cells, but penalize recently visited cells
+                                goal_x, goal_y = check_goal
+                                ai_path = self.ai_agent.path if hasattr(self.ai_agent, 'path') else []
+                                min_dist = float('inf')
+                                for nx, ny in accessible_neighbors:
+                                    dist = abs(nx - goal_x) + abs(ny - goal_y)
+                                    is_visited = (nx, ny) in visited_cells
+                                    is_recent_visit = (nx, ny) in ai_path[-3:] if len(ai_path) >= 3 else False
+                                    # Strongly prefer unexplored cells, penalize visited and recently visited
+                                    score = dist + (200 if is_visited else 0) + (100 if is_recent_visit else 0)
+                                    if score < min_dist:
+                                        min_dist = score
+                                        best_next = (nx, ny)
+                            else:
+                                # Goal not discovered - explore randomly, STRONGLY prefer unexplored cells
+                                unexplored = [n for n in accessible_neighbors if n not in visited_cells]
+                                if unexplored:
+                                    import random
+                                    best_next = random.choice(unexplored)
+                                else:
+                                    # All neighbors explored - backtrack intelligently
+                                    # Avoid immediate back-and-forth by preferring positions further back in history
+                                    ai_move_history = self.ai_agent.move_history if hasattr(self.ai_agent, 'move_history') else []
+                                    current_pos = (ai_x, ai_y)
+                                    
+                                    # Get the immediate previous position (from last move)
+                                    previous_pos = None
+                                    if ai_move_history:
+                                        last_move = ai_move_history[-1]
+                                        previous_pos = last_move.get('old_pos')  # Position we came from
+                                    
+                                    # Score each neighbor: prefer positions that are further back in history
+                                    scored_neighbors = []
+                                    for nx, ny in accessible_neighbors:
+                                        score = 1000  # Base score
+                                        
+                                        # Strongly penalize immediate backtrack (previous position)
+                                        if (nx, ny) == previous_pos:
+                                            score = 0  # Avoid immediate back-and-forth
+                                            scored_neighbors.append((score, (nx, ny)))
+                                            continue
+                                        
+                                        # Check how many moves ago this position was visited
+                                        found_in_history = False
+                                        for i, move in enumerate(reversed(ai_move_history[-15:])):  # Look at last 15 moves
+                                            if move.get('old_pos') == (nx, ny) or move.get('new_pos') == (nx, ny):
+                                                # Further back in history = higher score (preferred for backtracking)
+                                                # Position visited 10 moves ago is better than position visited 2 moves ago
+                                                score = 100 + (15 - i) * 10  # More moves ago = higher score
+                                                found_in_history = True
+                                                break
+                                        
+                                        # If position is not in recent history, it might be a good backtrack target
+                                        # but less preferred than positions we know we've been to
+                                        if not found_in_history:
+                                            score = 50  # Lower score than known positions in history
+                                        
+                                        scored_neighbors.append((score, (nx, ny)))
+                                    
+                                    # Sort by score (highest first) and pick the best
+                                    scored_neighbors.sort(reverse=True, key=lambda x: x[0])
+                                    if scored_neighbors and scored_neighbors[0][0] > 0:
+                                        best_next = scored_neighbors[0][1]
+                                    else:
+                                        # All neighbors are immediate previous position - must backtrack anyway
+                                        # Choose the one furthest back in history
+                                        import random
+                                        best_next = random.choice(accessible_neighbors)
+                            
+                            if best_next:
+                                from pathfinding import PathfindingResult
+                                result = PathfindingResult()
+                                result.path_found = True
+                                result.path = [(ai_x, ai_y), best_next]
+                                result.cost = self.maze.get_cost(best_next[0], best_next[1])
+                                self.ai_agent.path_result = result
+                                self.ai_agent.path = [(ai_x, ai_y), best_next]
+                                self.ai_agent.current_path_index = 0
         else:
             # Fog turned OFF - clear discovered cells and recompute AI path with full visibility
             self.discovered_cells = set()

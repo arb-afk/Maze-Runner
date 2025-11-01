@@ -56,9 +56,15 @@ class Pathfinder:
         def is_accessible(pos):
             if discovered_cells is None:
                 return True  # All cells visible
-            # Always allow start and goal positions (they're outside the maze)
-            if pos == start or pos == goal:
+            # Start position (current position) is always accessible
+            if pos == start:
                 return True
+            # Goal position is only accessible if discovered (true blindness)
+            # AI cannot pathfind toward an undiscovered goal - must discover it first
+            if pos == goal:
+                # Goal must be discovered to be accessible
+                return pos in discovered_cells
+            # All other cells must be discovered
             return pos in discovered_cells
         
         while pq:
@@ -120,7 +126,10 @@ class Pathfinder:
         pq = [(0, start)]  # Priority queue: (f_score, position)
         came_from = {}
         g_score = {start: 0}  # Actual cost from start
-        f_score = {start: self.heuristic(start_x, start_y, goal_x, goal_y)}
+        # For fog of war: Only use heuristic if goal is discovered, otherwise use zero (Dijkstra-like)
+        goal_discovered = discovered_cells is None or goal in discovered_cells
+        initial_h = self.heuristic(start_x, start_y, goal_x, goal_y) if goal_discovered else 0
+        f_score = {start: initial_h}
         result.explored_nodes = set()
         result.frontier_nodes = {start}
         
@@ -128,9 +137,15 @@ class Pathfinder:
         def is_accessible(pos):
             if discovered_cells is None:
                 return True  # All cells visible
-            # Always allow start and goal positions (they're outside the maze)
-            if pos == start or pos == goal:
+            # Start position (current position) is always accessible
+            if pos == start:
                 return True
+            # Goal position is only accessible if discovered (true blindness)
+            # AI cannot pathfind toward an undiscovered goal - must discover it first
+            if pos == goal:
+                # Goal must be discovered to be accessible
+                return pos in discovered_cells
+            # All other cells must be discovered
             return pos in discovered_cells
         
         while pq:
@@ -173,7 +188,9 @@ class Pathfinder:
                 if next_node not in g_score or tentative_g < g_score[next_node]:
                     came_from[next_node] = current
                     g_score[next_node] = tentative_g
-                    h_score = self.heuristic(nx, ny, goal_x, goal_y)
+                    # For fog of war: Only use heuristic if goal is discovered
+                    goal_discovered = discovered_cells is None or goal in discovered_cells
+                    h_score = self.heuristic(nx, ny, goal_x, goal_y) if goal_discovered else 0
                     f_score[next_node] = tentative_g + h_score
                     heapq.heappush(pq, (f_score[next_node], next_node))
                     result.frontier_nodes.add(next_node)
@@ -199,9 +216,16 @@ class Pathfinder:
         # Helper to check if a cell is accessible
         def is_accessible(pos):
             if discovered_cells is None:
+                return True  # All cells visible
+            # Start position (current position) is always accessible
+            if pos == start:
                 return True
-            if pos == start or pos == goal:
-                return True
+            # Goal position is only accessible if discovered (true blindness)
+            # AI cannot pathfind toward an undiscovered goal - must discover it first
+            if pos == goal:
+                # Goal must be discovered to be accessible
+                return pos in discovered_cells
+            # All other cells must be discovered
             return pos in discovered_cells
         result = PathfindingResult()
         start_x, start_y = start
@@ -213,11 +237,15 @@ class Pathfinder:
         g_forward = {start: 0}
         explored_forward = set()
         
-        # Backward search
-        pq_backward = [(0, goal)]
+        # Backward search - only start if goal is discovered
+        # For true blindness: goal must be discovered to pathfind from it
+        pq_backward = []
         came_from_backward = {}
-        g_backward = {goal: 0}
+        g_backward = {}
         explored_backward = set()
+        if discovered_cells is None or goal in discovered_cells:
+            pq_backward = [(0, goal)]
+            g_backward = {goal: 0}
         
         meet_point = None
         
@@ -246,12 +274,14 @@ class Pathfinder:
                     new_g = g_forward[current] + edge_cost
                     if next_node not in g_forward or new_g < g_forward[next_node]:
                         g_forward[next_node] = new_g
-                        h = self.heuristic(nx, ny, goal_x, goal_y)
+                        # For fog of war: Only use heuristic if goal is discovered
+                        goal_discovered = discovered_cells is None or goal in discovered_cells
+                        h = self.heuristic(nx, ny, goal_x, goal_y) if goal_discovered else 0
                         f = new_g + h
                         heapq.heappush(pq_forward, (f, next_node))
                         came_from_forward[next_node] = current
             
-            # Backward step
+                # Backward step
             if pq_backward:
                 current_f, current = heapq.heappop(pq_backward)
                 if current in explored_backward:

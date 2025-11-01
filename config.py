@@ -89,7 +89,8 @@ AI_ALGORITHM = 'ASTAR'  # Default algorithm for AI
 
 # Extensions
 FOG_OF_WAR_ENABLED = False
-FOG_OF_WAR_RADIUS = 3  # Visibility radius
+FOG_OF_WAR_RADIUS = 3  # Visibility radius for player
+AI_FOG_OF_WAR_RADIUS = 1  # Visibility radius for AI (much smaller - AI is "blind")
 ALGORITHM_COMPARISON = False  # Show algorithm comparison dashboard
 
 # Gameplay settings
