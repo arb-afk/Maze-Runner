@@ -9,44 +9,57 @@ WINDOW_HEIGHT = 1000
 CELL_SIZE = 30
 GRID_PADDING = 250  # Space for UI on the right
 
-# Colors - Modern, vibrant palette
+# Colors - Modern, vibrant palette with improved aesthetics
 COLORS = {
-    'GRASS': (76, 175, 80),           # Material Green
-    'GRASS_DARK': (56, 142, 60),      # Darker green for depth
-    'WATER': (33, 150, 243),          # Material Blue
-    'WATER_DARK': (25, 118, 210),     # Darker blue
-    'MUD': (121, 85, 72),             # Material Brown
-    'MUD_DARK': (93, 64, 55),         # Darker brown
-    'LAVA': (244, 67, 54),            # Material Red
-    'LAVA_DARK': (198, 40, 40),       # Darker red
-    'LAVA_GLOW': (255, 152, 0),       # Orange glow
-    'WALL': (35, 35, 35),             # Very dark gray for walls (distinct from lava)
-    'WALL_LIGHT': (60, 60, 60),       # Lighter gray for wall highlights
-    'PATH': (255, 255, 255),          # White paths
+    'GRASS': (102, 187, 106),         # Brighter Material Green
+    'GRASS_DARK': (76, 175, 80),      # Medium green for depth
+    'WATER': (66, 165, 245),          # Brighter Material Blue
+    'WATER_DARK': (33, 150, 243),     # Medium blue
+    'MUD': (141, 110, 99),            # Lighter Material Brown
+    'MUD_DARK': (121, 85, 72),        # Medium brown
+    'LAVA': (239, 83, 80),            # Brighter Material Red
+    'LAVA_DARK': (229, 57, 53),       # Medium red
+    'LAVA_GLOW': (255, 183, 77),      # Brighter orange glow
+    'WALL': (45, 45, 48),             # Modern dark gray for walls
+    'WALL_LIGHT': (78, 78, 82),       # Modern lighter gray for wall highlights
+    'PATH': (255, 255, 255),          # Pure white paths
     'START': (139, 195, 74),          # Light Green
     'START_DARK': (104, 159, 56),     # Darker green
-    'GOAL': (255, 193, 7),            # Amber
-    'GOAL_DARK': (255, 160, 0),       # Darker amber
-    'GOAL_GLOW': (255, 235, 59),      # Yellow glow
-    'CHECKPOINT': (255, 152, 0),      # Orange
-    'CHECKPOINT_DARK': (245, 124, 0), # Darker orange
-    'PLAYER': (236, 64, 122),         # Pink
-    'PLAYER_OUTLINE': (194, 24, 91),  # Dark pink
-    'AI': (156, 39, 176),             # Purple
-    'AI_OUTLINE': (123, 31, 162),     # Dark purple
-    'PATH': (255, 235, 59),           # Bright yellow
+    'GOAL': (255, 214, 0),            # Brighter Amber/Gold
+    'GOAL_DARK': (255, 193, 7),       # Medium amber
+    'GOAL_GLOW': (255, 245, 157),     # Soft yellow glow
+    'CHECKPOINT': (255, 167, 38),     # Brighter Orange
+    'CHECKPOINT_DARK': (251, 140, 0), # Medium orange
+    'PLAYER': (240, 98, 146),         # Brighter Pink
+    'PLAYER_OUTLINE': (216, 27, 96),  # Rich dark pink
+    'AI': (171, 71, 188),             # Brighter Purple
+    'AI_OUTLINE': (142, 36, 170),     # Rich dark purple
+    'PATH_LINE': (255, 235, 59),      # Bright yellow for path lines
     'PATH_DARK': (251, 192, 45),      # Darker yellow
     'EXPLORED': (244, 143, 177),      # Light pink with alpha
     'FRONTIER': (144, 202, 249),      # Light blue with alpha
-    'BACKGROUND': (250, 250, 250),    # Off-white
-    'UI_BG': (245, 245, 245),         # Light gray
-    'UI_PANEL': (255, 255, 255),      # White panel
-    'UI_BORDER': (224, 224, 224),     # Light border
-    'TEXT': (33, 33, 33),             # Dark gray text
-    'TEXT_SECONDARY': (117, 117, 117), # Secondary text
+    'BACKGROUND': (248, 249, 250),    # Softer off-white
+    'UI_BG': (243, 244, 246),         # Softer light gray
+    'UI_PANEL': (255, 255, 255),      # Pure white panel
+    'UI_BORDER': (218, 220, 224),     # Softer border
+    'TEXT': (32, 33, 36),             # Slightly warmer dark gray text
+    'TEXT_SECONDARY': (95, 99, 104),  # Modern secondary text
     'FOG': (33, 33, 33),              # Dark fog of war
-    'ENERGY_BAR': (76, 175, 80),      # Green energy
-    'ENERGY_BAR_LOW': (244, 67, 54),  # Red energy
+    'ENERGY_BAR': (102, 187, 106),    # Bright green energy
+    'ENERGY_BAR_LOW': (239, 83, 80),  # Bright red energy
+    # New obstacle colors
+    'SPIKES': (120, 120, 120),        # Gray spikes
+    'SPIKES_DARK': (80, 80, 80),      # Dark gray
+    'THORNS': (85, 139, 47),          # Dark olive green
+    'THORNS_DARK': (60, 100, 30),     # Darker olive
+    'QUICKSAND': (210, 180, 140),     # Tan/beige
+    'QUICKSAND_DARK': (180, 150, 110), # Darker tan
+    'ROCKS': (160, 160, 160),         # Light gray
+    'ROCKS_DARK': (120, 120, 120),    # Medium gray
+    # Reward cells
+    'REWARD': (255, 215, 0),          # Gold/yellow
+    'REWARD_GLOW': (255, 235, 59),    # Bright yellow glow
+    'REWARD_DARK': (255, 193, 7),     # Darker gold
 }
 
 # Terrain costs
@@ -60,19 +73,44 @@ TERRAIN_COSTS = {
     'START': 0,
     'GOAL': 0,
     'CHECKPOINT': 0,
+    # New obstacle types for Dynamic mode
+    'SPIKES': 4,      # Sharp spikes - moderate cost
+    'THORNS': 3,      # Thorny bushes - light cost
+    'QUICKSAND': 6,   # Quicksand - high cost
+    'ROCKS': 2,       # Rocky terrain - low cost
+    # Reward cells - reduce cost temporarily
+    'REWARD': 0,      # Free to traverse, gives bonus
 }
+
+# Reward settings
+REWARD_BONUS = -2  # Cost reduction when collecting reward (negative = bonus)
+REWARD_DURATION = 5  # Number of moves the reward effect lasts
+REWARD_SPAWN_RATE = 0.03  # 3% of cells spawn as rewards
+
+# Dynamic obstacles (for Obstacle Course mode)
+DYNAMIC_OBSTACLE_CHANGE_PER_TURN = 2  # Number of obstacles to add/remove per turn
+DYNAMIC_OBSTACLE_MAX_CHANGES = 3  # Maximum total changes (adds + removes) per turn
 
 # Game settings
 FPS = 60
 MAZE_WIDTH = 31  # Use odd number for proper maze generation
 MAZE_HEIGHT = 23  # Use odd number for proper maze generation
-OBSTACLE_SPAWN_RATE = 0.15  # Probability of obstacle appearing (increased for visibility)
-OBSTACLE_DESPAWN_RATE = 0.20  # Probability of obstacle disappearing (increased for visibility)
 
 # AI settings
 AI_SPEED = 0.5  # Moves every N seconds (for non-turn-based)
 HEURISTIC_TYPE = 'MANHATTAN'  # MANHATTAN or EUCLIDEAN
 TURN_BASED = True  # Turn-based mode for AI Duel
+
+# AI Difficulty settings
+AI_DIFFICULTY = 'MEDIUM'  # Options: 'EASY', 'MEDIUM', 'HARD'
+# EASY: Uses MANHATTAN heuristic with 0.7 scaling (more predictable, suboptimal)
+# MEDIUM: Uses MANHATTAN heuristic with 1.0 scaling (balanced)
+# HARD: Uses EUCLIDEAN heuristic with 1.5 scaling (more optimal, aggressive)
+AI_HEURISTIC_SCALE = {
+    'EASY': 0.7,
+    'MEDIUM': 1.0,
+    'HARD': 1.5
+}
 
 # Algorithm selection
 # Options: 'DIJKSTRA', 'ASTAR', 'BIDIRECTIONAL_ASTAR', 'DSTAR', 'MULTI_OBJECTIVE'
@@ -87,11 +125,11 @@ AI_ALGORITHM = 'ASTAR'  # Default algorithm for AI
 # - Uses MULTI_OBJECTIVE in Multi-Goal/Checkpoint modes
 # - Uses ASTAR or DIJKSTRA otherwise
 
+# Available algorithms for user selection
+AVAILABLE_ALGORITHMS = ['BFS', 'DIJKSTRA', 'ASTAR', 'BIDIRECTIONAL_ASTAR']
+
 # Extensions
-FOG_OF_WAR_ENABLED = False
-FOG_OF_WAR_RADIUS = 3  # Visibility radius for player
-AI_FOG_OF_WAR_RADIUS = 1  # Visibility radius for AI (much smaller - AI is "blind")
-ALGORITHM_COMPARISON = False  # Show algorithm comparison dashboard
+FOG_OF_WAR_RADIUS = 3  # Fallback visibility radius (actual radius set per mode in game_modes.py)
 
 # Gameplay settings
 PREVENT_PATH_REVISITING = False  # Allow revisiting cells (set to False to ensure checkpoint accessibility)
@@ -105,4 +143,7 @@ ENABLE_DIAGONALS = False
 FONT_SIZE_SMALL = 16
 FONT_SIZE_MEDIUM = 20
 FONT_SIZE_LARGE = 24
+
+# Debug settings
+DEBUG_MODE = False  # Set to True to enable debug print statements
 

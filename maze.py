@@ -8,7 +8,7 @@ import pygame
 from config import *
 
 class Maze:
-    def __init__(self, width, height):
+    def __init__(self, width, height, seed=None):
         # Use odd dimensions for proper maze generation
         self.width = width if width % 2 == 1 else width - 1
         self.height = height if height % 2 == 1 else height - 1
@@ -19,8 +19,14 @@ class Maze:
         self.start_pos = None
         self.goal_pos = None
         self.checkpoints = []
-        self.dynamic_obstacles = set()  # Track obstacles spawned in dynamic mode
-        self.terrain = {}  # Map (x, y) -> terrain type for path cells (GRASS, WATER, MUD)
+        self.dynamic_obstacles = set()  # Track lava obstacles (used in Multi-Goal and AI Duel modes)
+        self.terrain = {}  # Map (x, y) -> terrain type for path cells (GRASS, WATER, MUD, SPIKES, etc.)
+        
+        # Deterministic dynamic obstacles system
+        self.obstacle_seed = seed if seed is not None else random.randint(0, 999999)
+        self.obstacle_rng = random.Random(self.obstacle_seed)  # Separate RNG for obstacles
+        self.turn_number = 0  # Track turn for deterministic changes
+        
         self.initialize_maze()
     
     def initialize_maze(self):
@@ -113,8 +119,9 @@ class Maze:
             # Open the east wall of the exit cell
             self.walls[(exit_x, exit_y, 'E')] = True
         
-        # Assign terrain types to path cells
-        self.assign_terrain()
+        # Note: Terrain assignment is done in game mode setup
+        # This allows different modes to have different terrain types
+        # Default assign_terrain() will be called if not overridden
         
         # Note: Lava obstacles are spawned after checkpoints are added
         # See spawn_initial_lava_obstacles() which should be called after maze setup
@@ -215,11 +222,39 @@ class Maze:
         
         return neighbors
     
-    def assign_terrain(self):
-        """Assign terrain types to path cells"""
+    @staticmethod
+    def random_terrain(include_obstacles: bool = False) -> tuple[list[str], list[float]]:
+        """
+        Helper function to get terrain types and weights for random selection.
+        Reduces redundancy across terrain assignment logic.
+        
+        Args:
+            include_obstacles: If True, include obstacle types (spikes, thorns, quicksand, rocks)
+            
+        Returns:
+            Tuple of (terrain_types list, terrain_weights list)
+        """
+        if include_obstacles:
+            # Obstacle Course mode: include obstacles in the terrain mix
+            terrain_types = ['GRASS', 'WATER', 'MUD', 'SPIKES', 'THORNS', 'QUICKSAND', 'ROCKS']
+            terrain_weights = [0.55, 0.15, 0.1, 0.05, 0.05, 0.05, 0.05]  # 55% grass, 20% obstacles
+        else:
+            # Normal mode: just basic terrain
+            terrain_types = ['GRASS', 'WATER', 'MUD']
+            terrain_weights = [0.7, 0.2, 0.1]  # Grass most common
+        
+        return terrain_types, terrain_weights
+    
+    def assign_terrain(self, include_obstacles: bool = False):
+        """Assign terrain types to path cells
+        
+        Args:
+            include_obstacles: If True, also place static obstacles (spikes, thorns, quicksand, rocks)
+                             Used for Obstacle Course mode
+        """
         import random
-        terrain_types = ['GRASS', 'WATER', 'MUD']
-        terrain_weights = [0.7, 0.2, 0.1]  # Grass most common
+        
+        terrain_types, terrain_weights = self.random_terrain(include_obstacles)
         
         self.terrain = {}
         for y in range(self.height):
@@ -239,6 +274,10 @@ class Maze:
         if not self.is_passable(x, y):
             return float('inf')
         terrain = self.terrain.get((x, y), 'GRASS')
+        return TERRAIN_COSTS.get(terrain, 1)
+    
+    def get_cost_for_terrain(self, terrain):
+        """Get cost for a terrain type"""
         return TERRAIN_COSTS.get(terrain, 1)
     
     def get_terrain(self, x, y):
@@ -353,24 +392,23 @@ class Maze:
         # Lava obstacles persist - no despawning
         return None
     
-    def update_dynamic_terrain(self, player_path=None, radius=3):
+    def spawn_static_obstacles(self, player_path=None, radius=4):
         """
-        Change terrain types (grass, water, mud) on path cells near the player's path.
-        This creates dynamic obstacles that change costs but don't block paths.
-        Only changes terrain cells near the player's current position and path.
+        Spawn static obstacles (spikes, thorns, quicksand, rocks) near player path.
+        These obstacles stay once placed, making it easier to understand the maze.
         
         Args:
             player_path: List of (x, y) positions representing the player's path
-            radius: Radius around player path cells to update (default 3)
+            radius: Radius around player path cells to spawn obstacles (default 4)
         """
         if player_path is None or len(player_path) == 0:
             return
         
-        # Get cells near the player's path to update
-        cells_to_update = set()
+        # Get cells near the player's path where obstacles can spawn
+        cells_to_check = set()
         
-        # Include cells near recent path positions (last few steps)
-        recent_path = player_path[-5:] if len(player_path) > 5 else player_path
+        # Include cells near recent path positions (last 3 steps)
+        recent_path = player_path[-3:] if len(player_path) > 3 else player_path
         
         for px, py in recent_path:
             # Add cells within radius of this path position
@@ -383,20 +421,28 @@ class Maze:
                     if distance <= radius and self.is_valid(x, y):
                         if self.is_passable(x, y) and (x, y) != self.start_pos and (x, y) != self.goal_pos:
                             if (x, y) not in self.checkpoints and (x, y) not in self.dynamic_obstacles:
-                                cells_to_update.add((x, y))
+                                # Don't place on player's current or recent positions
+                                if (x, y) not in recent_path:
+                                    # Don't place obstacles if already have an obstacle type
+                                    current_terrain = self.terrain.get((x, y), 'GRASS')
+                                    if current_terrain in ['GRASS', 'PATH']:
+                                        cells_to_check.add((x, y))
         
-        # Randomly change terrain on most (70-90%) of these cells
-        cells_list = list(cells_to_update)
+        # Spawn obstacles on some of these cells (lower rate - 10-20%)
+        cells_list = list(cells_to_check)
         if cells_list:
-            # Change 70-90% of nearby cells
-            change_probability = random.uniform(0.7, 0.9)
-            num_to_change = int(len(cells_list) * change_probability)
-            cells_to_change = random.sample(cells_list, min(num_to_change, len(cells_list)))
+            spawn_probability = 0.15  # 15% chance
+            num_to_spawn = int(len(cells_list) * spawn_probability)
+            cells_to_spawn = random.sample(cells_list, min(num_to_spawn, len(cells_list)))
             
-            for x, y in cells_to_change:
-                # Randomly assign new terrain type
-                new_terrain = random.choice(['GRASS', 'WATER', 'MUD'])
-                self.terrain[(x, y)] = new_terrain
+            # Define obstacle types with weighted probabilities
+            obstacle_types = ['SPIKES', 'THORNS', 'QUICKSAND', 'ROCKS']
+            obstacle_weights = [0.25, 0.3, 0.2, 0.25]  # Thorns most common, quicksand least
+            
+            for x, y in cells_to_spawn:
+                # Randomly assign obstacle type
+                obstacle_type = random.choices(obstacle_types, weights=obstacle_weights)[0]
+                self.terrain[(x, y)] = obstacle_type
     
     def _update_walls_around(self, x, y):
         """Update wall connections when a cell changes from wall to path"""
@@ -530,23 +576,233 @@ class Maze:
             
             attempt += 1
     
-    def update_dynamic_obstacles(self, player_path=None, checkpoints=None, reached_checkpoints=None):
+    def spawn_reward_cells(self, spawn_rate=0.03):
         """
-        Update dynamic obstacles and terrain types.
-        IMPORTANT: Original maze walls NEVER change - they are completely static.
-        - Lava obstacles are spawned once during maze generation, not dynamically
-        - Terrain types (grass, water, mud) can change dynamically on path cells near player
-        This should ONLY be called when player or AI moves, not continuously.
+        Spawn reward cells that give temporary cost reduction when collected.
         
         Args:
-            player_path: Optional list of (x, y) positions representing the player's path
-                         If provided, changes only affect cells near the path
-            checkpoints: Optional list of checkpoint positions (unused, kept for compatibility)
-            reached_checkpoints: Optional list of reached checkpoints (unused, kept for compatibility)
+            spawn_rate: Probability of spawning reward on each valid cell (default 0.03 = 3%)
         """
-        # Lava obstacles are spawned during maze generation, not here
-        # Only update terrain types dynamically
-        self.update_dynamic_terrain(player_path)
+        import random
+        
+        # Get all passable cells that can have rewards
+        for y in range(self.height):
+            for x in range(self.width):
+                # Don't spawn on start, goal, checkpoints, or obstacles
+                if (x, y) == self.start_pos or (x, y) == self.goal_pos:
+                    continue
+                if (x, y) in self.checkpoints:
+                    continue
+                if not self.is_passable(x, y):
+                    continue
+                
+                # Don't spawn adjacent to start/goal/checkpoints
+                too_close = False
+                for cx, cy in [(self.start_pos[0], self.start_pos[1]), 
+                               (self.goal_pos[0], self.goal_pos[1])] + self.checkpoints:
+                    if abs(x - cx) + abs(y - cy) <= 1:
+                        too_close = True
+                        break
+                
+                if not too_close and random.random() < spawn_rate:
+                    # Spawn reward cell
+                    self.terrain[(x, y)] = 'REWARD'
+    
+    def update_dynamic_obstacles(self, player_path=None, checkpoints=None, reached_checkpoints=None):
+        """
+        Update dynamic obstacles for Obstacle Course mode (turn-based, deterministic).
+        Uses seeded RNG so AI can predict future obstacle changes.
+        
+        The same obstacle changes will occur on turn N regardless of who's simulating.
+        This allows AI to look ahead and plan for future obstacle configurations.
+        
+        Args:
+            player_path: Current path taken by player to avoid blocking
+            checkpoints: List of checkpoint positions
+            reached_checkpoints: List of reached checkpoints
+        """
+        from config import DYNAMIC_OBSTACLE_CHANGE_PER_TURN, DYNAMIC_OBSTACLE_MAX_CHANGES
+        from pathfinding import Pathfinder
+        
+        self.turn_number += 1
+        from config import DEBUG_MODE
+        if DEBUG_MODE:
+            print(f"[Dynamic Obstacles] Turn {self.turn_number}: Deterministic obstacle update (seed: {self.obstacle_seed})")
+        
+        obstacle_types = ['SPIKES', 'THORNS', 'QUICKSAND', 'ROCKS']
+        total_changes = 0
+        
+        # Find current obstacles
+        current_obstacles = []
+        for y in range(self.height):
+            for x in range(self.width):
+                terrain = self.terrain.get((x, y), 'GRASS')
+                if terrain in obstacle_types:
+                    current_obstacles.append((x, y))
+        
+        # Remove exactly DYNAMIC_OBSTACLE_CHANGE_PER_TURN obstacles (deterministic)
+        if current_obstacles:
+            # Use deterministic RNG - same shuffle every time for this turn
+            self.obstacle_rng.shuffle(current_obstacles)
+            removed_count = 0
+            for x, y in current_obstacles:
+                if total_changes >= DYNAMIC_OBSTACLE_MAX_CHANGES:
+                    break
+                # Don't remove if player is currently on it
+                if player_path and (x, y) == player_path[-1]:
+                    continue
+                # Replace with grass
+                self.terrain[(x, y)] = 'GRASS'
+                removed_count += 1
+                total_changes += 1
+                if removed_count >= DYNAMIC_OBSTACLE_CHANGE_PER_TURN:
+                    break
+            
+            if removed_count > 0:
+                from config import DEBUG_MODE
+                if DEBUG_MODE:
+                    print(f"[Dynamic Obstacles] Removed {removed_count} obstacles at positions")
+        
+        # Spawn exactly DYNAMIC_OBSTACLE_CHANGE_PER_TURN new obstacles (deterministic)
+        valid_cells = []
+        for y in range(self.height):
+            for x in range(self.width):
+                if not self.is_passable(x, y):
+                    continue
+                if (x, y) == self.start_pos or (x, y) == self.goal_pos:
+                    continue
+                if checkpoints and (x, y) in checkpoints:
+                    continue
+                # Don't spawn on player's current position or recent path
+                if player_path:
+                    if (x, y) == player_path[-1]:
+                        continue
+                    if len(player_path) > 3 and (x, y) in player_path[-3:]:
+                        continue
+                
+                terrain = self.terrain.get((x, y), 'GRASS')
+                if terrain in ['GRASS', 'WATER', 'MUD']:  # Can spawn on basic terrain
+                    valid_cells.append((x, y))
+        
+        if valid_cells:
+            # Use deterministic RNG - same shuffle every time for this turn
+            self.obstacle_rng.shuffle(valid_cells)
+            spawned_count = 0
+            
+            for x, y in valid_cells:
+                if total_changes >= DYNAMIC_OBSTACLE_MAX_CHANGES:
+                    break
+                if spawned_count >= DYNAMIC_OBSTACLE_CHANGE_PER_TURN:
+                    break
+                
+                # Temporarily add obstacle (deterministic type selection)
+                old_terrain = self.terrain.get((x, y), 'GRASS')
+                new_obstacle = self.obstacle_rng.choice(obstacle_types)
+                self.terrain[(x, y)] = new_obstacle
+                
+                # Check if path still exists from player to goal
+                if not self._verify_path_exists(player_path, checkpoints, reached_checkpoints):
+                    # Restore old terrain if path is blocked
+                    self.terrain[(x, y)] = old_terrain
+                else:
+                    spawned_count += 1
+                    total_changes += 1
+            
+            if spawned_count > 0:
+                from config import DEBUG_MODE
+                if DEBUG_MODE:
+                    print(f"[Dynamic Obstacles] Spawned {spawned_count} new obstacles")
+        
+        from config import DEBUG_MODE
+        if DEBUG_MODE:
+            print(f"[Dynamic Obstacles] Turn {self.turn_number}: {total_changes} total changes")
+    
+    def get_future_obstacles(self, turns_ahead, current_path=None, checkpoints=None, reached_checkpoints=None):
+        """
+        Simulate future obstacle changes without modifying current state.
+        Used by AI to predict obstacle configurations for multi-step lookahead.
+        
+        Args:
+            turns_ahead: Number of turns to simulate into the future
+            current_path: Current player/AI path
+            checkpoints: Checkpoint positions
+            reached_checkpoints: Reached checkpoints
+            
+        Returns:
+            List of terrain dictionaries, one for each future turn
+        """
+        from config import DYNAMIC_OBSTACLE_CHANGE_PER_TURN, DYNAMIC_OBSTACLE_MAX_CHANGES
+        
+        # Create a temporary RNG with the same seed, advanced to future turn
+        temp_rng = random.Random(self.obstacle_seed)
+        
+        # Advance RNG to current turn state
+        for _ in range(self.turn_number):
+            temp_rng.random()  # Consume random numbers to sync state
+        
+        # Simulate future turns
+        future_configurations = []
+        simulated_terrain = dict(self.terrain)  # Copy current terrain
+        
+        obstacle_types = ['SPIKES', 'THORNS', 'QUICKSAND', 'ROCKS']
+        
+        for turn in range(turns_ahead):
+            # Simulate obstacle removal
+            current_obstacles = [(x, y) for (x, y), t in simulated_terrain.items() 
+                                if t in obstacle_types]
+            
+            if current_obstacles:
+                temp_rng.shuffle(current_obstacles)
+                for i in range(min(DYNAMIC_OBSTACLE_CHANGE_PER_TURN, len(current_obstacles))):
+                    x, y = current_obstacles[i]
+                    simulated_terrain[(x, y)] = 'GRASS'
+            
+            # Simulate obstacle spawning
+            valid_cells = []
+            for y in range(self.height):
+                for x in range(self.width):
+                    if not self.is_passable(x, y):
+                        continue
+                    terrain = simulated_terrain.get((x, y), 'GRASS')
+                    if terrain in ['GRASS', 'WATER', 'MUD']:
+                        valid_cells.append((x, y))
+            
+            if valid_cells:
+                temp_rng.shuffle(valid_cells)
+                for i in range(min(DYNAMIC_OBSTACLE_CHANGE_PER_TURN, len(valid_cells))):
+                    x, y = valid_cells[i]
+                    new_obstacle = temp_rng.choice(obstacle_types)
+                    simulated_terrain[(x, y)] = new_obstacle
+            
+            # Store this configuration
+            future_configurations.append(dict(simulated_terrain))
+        
+        return future_configurations
+    
+    def _verify_path_exists(self, player_path, checkpoints, reached_checkpoints):
+        """Verify that a path still exists from player to goal through unvisited checkpoints"""
+        from pathfinding import Pathfinder
+        
+        # Get player's current position
+        if not player_path:
+            start = self.start_pos
+        else:
+            start = player_path[-1]
+        
+        # Determine remaining checkpoints
+        if checkpoints:
+            unvisited = [cp for cp in checkpoints if cp not in (reached_checkpoints or [])]
+            if unvisited:
+                # Check if path exists through all unvisited checkpoints
+                pf = Pathfinder(self, 'MANHATTAN')
+                # Try a simple path to first unvisited checkpoint
+                result = pf.a_star(start, unvisited[0])
+                return result.path_found
+        
+        # No checkpoints or all visited - just check path to goal
+        pf = Pathfinder(self, 'MANHATTAN')
+        result = pf.a_star(start, self.goal_pos)
+        return result.path_found
     
     def has_path_through_unvisited_checkpoints(self, start_pos, unvisited_checkpoints):
         """
@@ -563,7 +819,16 @@ class Maze:
         
         # Try all permutations of checkpoint order to find a valid path
         import itertools
-        pathfinder = Pathfinder(self, 'MANHATTAN')
+        from pathfinding import Pathfinder
+        from config import AI_DIFFICULTY, HEURISTIC_TYPE
+        # Use difficulty-based heuristic
+        if AI_DIFFICULTY == 'HARD':
+            heuristic = 'EUCLIDEAN'
+        elif AI_DIFFICULTY == 'EASY':
+            heuristic = 'MANHATTAN'
+        else:
+            heuristic = HEURISTIC_TYPE
+        pathfinder = Pathfinder(self, heuristic)
         
         # Check if there's ANY order of checkpoints that allows a valid path to goal
         for checkpoint_order in itertools.permutations(unvisited_checkpoints):
@@ -596,7 +861,15 @@ class Maze:
         # If no unvisited checkpoints, just ensure path to goal
         if not unvisited_cps:
             from pathfinding import Pathfinder
-            pathfinder = Pathfinder(self, 'MANHATTAN')
+            from config import AI_DIFFICULTY, HEURISTIC_TYPE
+            # Use difficulty-based heuristic
+            if AI_DIFFICULTY == 'HARD':
+                heuristic = 'EUCLIDEAN'
+            elif AI_DIFFICULTY == 'EASY':
+                heuristic = 'MANHATTAN'
+            else:
+                heuristic = HEURISTIC_TYPE
+            pathfinder = Pathfinder(self, heuristic)
             result = pathfinder.a_star(start_pos, goal)
             if result.path_found:
                 return  # Path exists, no need to remove obstacles
@@ -668,14 +941,21 @@ class Maze:
                             self.terrain[(nx, ny)] = random.choice(['GRASS', 'WATER', 'MUD'])
                         self._update_walls_around(nx, ny)
     
-    def draw(self, screen, offset_x=0, offset_y=0, fog_of_war=None, player_pos=None):
-        """Draw the maze with walls and paths"""
+    def draw(self, screen, offset_x=0, offset_y=0, fog_of_war=None, player_pos=None, cell_size=None, visibility_radius=None):
+        """Draw the maze with walls and paths
+        
+        Args:
+            cell_size: Override CELL_SIZE for scaled rendering (e.g. split-screen)
+        """
+        # Use custom cell size if provided, otherwise use global CELL_SIZE
+        cs = cell_size if cell_size is not None else CELL_SIZE
+        
         # Calculate extended bounds to include start/goal outside maze
         # Start is at x=-1, Goal is at x=width
-        left_extend = CELL_SIZE if self.start_pos and self.start_pos[0] < 0 else 0
-        right_extend = CELL_SIZE if self.goal_pos and self.goal_pos[0] >= self.width else 0
-        total_width = self.width * CELL_SIZE + left_extend + right_extend
-        total_height = self.height * CELL_SIZE
+        left_extend = cs if self.start_pos and self.start_pos[0] < 0 else 0
+        right_extend = cs if self.goal_pos and self.goal_pos[0] >= self.width else 0
+        total_width = self.width * cs + left_extend + right_extend
+        total_height = self.height * cs
         
         # Draw background for entire area including start/goal
         bg_rect = pygame.Rect(
@@ -694,10 +974,10 @@ class Maze:
         # Draw start (left side, outside) - enhanced visual
         if self.start_pos and self.start_pos[0] < 0:
             start_rect = pygame.Rect(
-                offset_x + self.start_pos[0] * CELL_SIZE,
-                offset_y + self.start_pos[1] * CELL_SIZE,
-                CELL_SIZE,
-                CELL_SIZE
+                offset_x + self.start_pos[0] * cs,
+                offset_y + self.start_pos[1] * cs,
+                cs,
+                cs
             )
             # Draw background with gradient effect
             pygame.draw.rect(screen, COLORS['START'], start_rect)
@@ -708,15 +988,15 @@ class Maze:
             center_x, center_y = start_rect.centerx, start_rect.centery
             # Outer circle
             pygame.draw.circle(screen, COLORS['START_DARK'], 
-                             (center_x, center_y), CELL_SIZE // 2 - 4, 3)
+                             (center_x, center_y), cs // 2 - 4, 3)
             # Inner circle
             pygame.draw.circle(screen, (255, 255, 255), 
-                             (center_x, center_y), CELL_SIZE // 3)
+                             (center_x, center_y), cs // 3)
             # Arrow pointing right (toward maze)
             arrow_points = [
-                (center_x + CELL_SIZE // 6, center_y),
-                (center_x - CELL_SIZE // 6, center_y - CELL_SIZE // 8),
-                (center_x - CELL_SIZE // 6, center_y + CELL_SIZE // 8)
+                (center_x + cs // 6, center_y),
+                (center_x - cs // 6, center_y - cs // 8),
+                (center_x - cs // 6, center_y + cs // 8)
             ]
             pygame.draw.polygon(screen, COLORS['START_DARK'], arrow_points)
             
@@ -730,10 +1010,10 @@ class Maze:
         # Draw goal (right side, outside) - enhanced visual
         if self.goal_pos and self.goal_pos[0] >= self.width:
             goal_rect = pygame.Rect(
-                offset_x + self.goal_pos[0] * CELL_SIZE,
-                offset_y + self.goal_pos[1] * CELL_SIZE,
-                CELL_SIZE,
-                CELL_SIZE
+                offset_x + self.goal_pos[0] * cs,
+                offset_y + self.goal_pos[1] * cs,
+                cs,
+                cs
             )
             # Draw background
             pygame.draw.rect(screen, COLORS['GOAL'], goal_rect)
@@ -745,7 +1025,7 @@ class Maze:
             center_x, center_y = goal_rect.centerx, goal_rect.centery
             pulse = int(time.time() * 3) % 2
             # Outer glow
-            glow_radius = CELL_SIZE // 2 - 2 + pulse * 2
+            glow_radius = cs // 2 - 2 + pulse * 2
             glow_surf = pygame.Surface((glow_radius * 2 + 4, glow_radius * 2 + 4), pygame.SRCALPHA)
             glow_color = (*COLORS['GOAL_GLOW'], 150 - pulse * 50)
             pygame.draw.circle(glow_surf, glow_color, 
@@ -754,13 +1034,13 @@ class Maze:
             
             # Inner circle
             pygame.draw.circle(screen, COLORS['GOAL_GLOW'], 
-                             (center_x, center_y), CELL_SIZE // 3)
+                             (center_x, center_y), cs // 3)
             pygame.draw.circle(screen, COLORS['GOAL_DARK'], 
                              (center_x, center_y), 
-                             CELL_SIZE // 4)
+                             cs // 4)
             # Star or checkmark in center
             pygame.draw.circle(screen, (255, 255, 255), 
-                             (center_x, center_y), CELL_SIZE // 8)
+                             (center_x, center_y), cs // 8)
             
             # Draw "GOAL" label
             font = pygame.font.Font(None, 16)
@@ -777,13 +1057,15 @@ class Maze:
                 if fog_of_war and player_pos:
                     px, py = player_pos
                     distance = abs(x - px) + abs(y - py)
-                    visible = distance <= FOG_OF_WAR_RADIUS
+                    # Use provided visibility radius, or fall back to config default
+                    radius = visibility_radius if visibility_radius is not None else FOG_OF_WAR_RADIUS
+                    visible = distance <= radius
                 
                 cell_rect = pygame.Rect(
-                    offset_x + x * CELL_SIZE,
-                    offset_y + y * CELL_SIZE,
-                    CELL_SIZE,
-                    CELL_SIZE
+                    offset_x + x * cs,
+                    offset_y + y * cs,
+                    cs,
+                    cs
                 )
                 
                 if not visible:
@@ -809,7 +1091,7 @@ class Maze:
                         # Draw lava symbol or pattern
                         center_x, center_y = cell_rect.centerx, cell_rect.centery
                         pygame.draw.circle(screen, COLORS.get('LAVA_GLOW', (255, 150, 0)), 
-                                         (center_x, center_y), CELL_SIZE // 3)
+                                         (center_x, center_y), cs // 3)
                     else:
                         # Draw regular wall with texture/shadow effect for depth
                         pygame.draw.rect(screen, COLORS['WALL'], cell_rect)
@@ -820,15 +1102,6 @@ class Maze:
                     # Get terrain-based color
                     terrain_type = self.terrain.get((x, y), 'GRASS')
                     
-                    if terrain_type == 'WATER':
-                        path_color = COLORS['WATER']
-                    elif terrain_type == 'MUD':
-                        path_color = COLORS['MUD']
-                    elif terrain_type == 'GRASS':
-                        path_color = COLORS.get('GRASS', (76, 175, 80))
-                    else:
-                        path_color = COLORS.get('PATH', (255, 255, 255))
-                    
                     # Special cells get different colors
                     # Note: start/goal are now outside the grid, so skip them here
                     if (x, y) in self.checkpoints:
@@ -837,7 +1110,7 @@ class Maze:
                         # Draw checkpoint star (more visible)
                         import math
                         center_x, center_y = cell_rect.centerx, cell_rect.centery
-                        outer_radius = CELL_SIZE // 3
+                        outer_radius = cs // 3
                         inner_radius = outer_radius // 2
                         points = []
                         for i in range(10):  # 5-pointed star needs 10 points
@@ -853,10 +1126,122 @@ class Maze:
                             pygame.draw.polygon(screen, COLORS['CHECKPOINT_DARK'], points)
                             # Add outline for visibility
                             pygame.draw.polygon(screen, (255, 255, 255), points, 1)
+                        
+                        # Checkpoint numbers removed - ordering is handled by AI pathfinding
+                    # Draw obstacle types (SPIKES, THORNS, QUICKSAND, ROCKS)
+                    elif terrain_type == 'SPIKES':
+                        # Draw gray spikes obstacle with X pattern
+                        pygame.draw.rect(screen, COLORS['SPIKES'], cell_rect)
+                        # Draw X pattern (diagonal lines)
+                        pygame.draw.line(screen, COLORS['SPIKES_DARK'], cell_rect.topleft, cell_rect.bottomright, 2)
+                        pygame.draw.line(screen, COLORS['SPIKES_DARK'], cell_rect.topright, cell_rect.bottomleft, 2)
+                        pygame.draw.rect(screen, COLORS['SPIKES_DARK'], cell_rect, 1)  # Thin border
+                        # Draw cost number
+                        cost = self.get_cost(x, y)
+                        font = pygame.font.Font(None, 16)
+                        cost_text = font.render(str(int(cost)), True, (255, 255, 255))
+                        text_rect = cost_text.get_rect(center=(cell_rect.centerx, cell_rect.centery))
+                        shadow = font.render(str(int(cost)), True, (0, 0, 0))
+                        screen.blit(shadow, (text_rect.x + 1, text_rect.y + 1))
+                        screen.blit(cost_text, text_rect)
+                    elif terrain_type == 'THORNS':
+                        # Draw green thorny bushes with dot pattern
+                        pygame.draw.rect(screen, COLORS['THORNS'], cell_rect)
+                        # Draw dots in a pattern
+                        cx, cy = cell_rect.centerx, cell_rect.centery
+                        radius = 2
+                        for dx in [-4, 0, 4]:
+                            for dy in [-4, 0, 4]:
+                                pygame.draw.circle(screen, COLORS['THORNS_DARK'], (cx + dx, cy + dy), radius)
+                        pygame.draw.rect(screen, COLORS['THORNS_DARK'], cell_rect, 1)  # Thin border
+                        # Draw cost number
+                        cost = self.get_cost(x, y)
+                        font = pygame.font.Font(None, 16)
+                        cost_text = font.render(str(int(cost)), True, (255, 255, 255))
+                        text_rect = cost_text.get_rect(center=(cell_rect.centerx, cell_rect.centery))
+                        shadow = font.render(str(int(cost)), True, (0, 0, 0))
+                        screen.blit(shadow, (text_rect.x + 1, text_rect.y + 1))
+                        screen.blit(cost_text, text_rect)
+                    elif terrain_type == 'QUICKSAND':
+                        # Draw tan/beige quicksand with diagonal stripe pattern
+                        pygame.draw.rect(screen, COLORS['QUICKSAND'], cell_rect)
+                        # Draw diagonal stripes
+                        for i in range(cell_rect.left, cell_rect.right + cs, 4):
+                            pygame.draw.line(screen, COLORS['QUICKSAND_DARK'], 
+                                           (i, cell_rect.top), 
+                                           (i + cs, cell_rect.bottom), 1)
+                        pygame.draw.rect(screen, COLORS['QUICKSAND_DARK'], cell_rect, 1)  # Thin border
+                        # Draw cost number
+                        cost = self.get_cost(x, y)
+                        font = pygame.font.Font(None, 16)
+                        cost_text = font.render(str(int(cost)), True, (255, 255, 255))
+                        text_rect = cost_text.get_rect(center=(cell_rect.centerx, cell_rect.centery))
+                        shadow = font.render(str(int(cost)), True, (0, 0, 0))
+                        screen.blit(shadow, (text_rect.x + 1, text_rect.y + 1))
+                        screen.blit(cost_text, text_rect)
+                    elif terrain_type == 'ROCKS':
+                        # Draw gray rocky terrain with circle pattern
+                        pygame.draw.rect(screen, COLORS['ROCKS'], cell_rect)
+                        # Draw circles for rocks
+                        cx, cy = cell_rect.centerx, cell_rect.centery
+                        pygame.draw.circle(screen, COLORS['ROCKS_DARK'], (cx - 5, cy - 5), 3)
+                        pygame.draw.circle(screen, COLORS['ROCKS_DARK'], (cx + 5, cy), 3)
+                        pygame.draw.circle(screen, COLORS['ROCKS_DARK'], (cx - 2, cy + 6), 3)
+                        pygame.draw.rect(screen, COLORS['ROCKS_DARK'], cell_rect, 1)  # Thin border
+                        # Draw cost number
+                        cost = self.get_cost(x, y)
+                        font = pygame.font.Font(None, 16)
+                        cost_text = font.render(str(int(cost)), True, (255, 255, 255))
+                        text_rect = cost_text.get_rect(center=(cell_rect.centerx, cell_rect.centery))
+                        shadow = font.render(str(int(cost)), True, (0, 0, 0))
+                        screen.blit(shadow, (text_rect.x + 1, text_rect.y + 1))
+                        screen.blit(cost_text, text_rect)
+                    elif terrain_type == 'REWARD':
+                        # Draw reward cell with glowing star effect
+                        pygame.draw.rect(screen, COLORS['REWARD'], cell_rect)
+                        # Draw animated glow effect (pulsing)
+                        ticks = pygame.time.get_ticks()
+                        pulse = abs((ticks % 2000) / 1000.0 - 1.0)  # Pulsing effect 0->1->0
+                        glow_color = tuple(int(COLORS['REWARD'][i] * (0.7 + 0.3 * pulse)) for i in range(3))
+                        
+                        # Draw star shape
+                        cx, cy = cell_rect.centerx, cell_rect.centery
+                        star_radius = int(cs * 0.3)
+                        # Draw plus sign for star
+                        pygame.draw.line(screen, COLORS['REWARD_GLOW'], 
+                                       (cx - star_radius, cy), (cx + star_radius, cy), 3)
+                        pygame.draw.line(screen, COLORS['REWARD_GLOW'], 
+                                       (cx, cy - star_radius), (cx, cy + star_radius), 3)
+                        # Draw X for star
+                        offset = int(star_radius * 0.7)
+                        pygame.draw.line(screen, COLORS['REWARD_GLOW'], 
+                                       (cx - offset, cy - offset), (cx + offset, cy + offset), 2)
+                        pygame.draw.line(screen, COLORS['REWARD_GLOW'], 
+                                       (cx - offset, cy + offset), (cx + offset, cy - offset), 2)
+                        
+                        pygame.draw.rect(screen, COLORS['REWARD_DARK'], cell_rect, 1)  # Border
+                        
+                        # Draw "R" or coin symbol
+                        font = pygame.font.Font(None, 18)
+                        symbol_text = font.render("R", True, (255, 255, 255))
+                        text_rect = symbol_text.get_rect(center=(cx, cy))
+                        shadow = font.render("R", True, (0, 0, 0))
+                        screen.blit(shadow, (text_rect.x + 1, text_rect.y + 1))
+                        screen.blit(symbol_text, text_rect)
                     else:
+                        # Draw regular terrain (WATER, MUD, GRASS, PATH)
+                        if terrain_type == 'WATER':
+                            path_color = COLORS['WATER']
+                        elif terrain_type == 'MUD':
+                            path_color = COLORS['MUD']
+                        elif terrain_type == 'GRASS':
+                            path_color = COLORS.get('GRASS', (76, 175, 80))
+                        else:
+                            path_color = COLORS.get('PATH', (255, 255, 255))
+                        
                         # Draw terrain-colored path
                         pygame.draw.rect(screen, path_color, cell_rect)
-                        # Draw terrain cost
+                        # Draw terrain cost for all terrain types
                         cost = self.get_cost(x, y)
                         if cost != float('inf') and terrain_type in ['GRASS', 'WATER', 'MUD']:
                             font = pygame.font.Font(None, 16)
@@ -878,10 +1263,10 @@ class Maze:
             for x in range(self.width):
                 if self.cells[y][x] == 1:  # Only draw borders for paths
                     cell_rect = pygame.Rect(
-                        offset_x + x * CELL_SIZE,
-                        offset_y + y * CELL_SIZE,
-                        CELL_SIZE,
-                        CELL_SIZE
+                        offset_x + x * cs,
+                        offset_y + y * cs,
+                        cs,
+                        cs
                     )
                     
                     # Check fog of war
@@ -889,7 +1274,9 @@ class Maze:
                     if fog_of_war and player_pos:
                         px, py = player_pos
                         distance = abs(x - px) + abs(y - py)
-                        visible = distance <= FOG_OF_WAR_RADIUS
+                        # Use provided visibility radius, or fall back to config default
+                        radius = visibility_radius if visibility_radius is not None else FOG_OF_WAR_RADIUS
+                        visible = distance <= radius
                     
                     if not visible:
                         continue
@@ -916,7 +1303,7 @@ class Maze:
         border_rect = pygame.Rect(
             offset_x,
             offset_y,
-            self.width * CELL_SIZE,
-            self.height * CELL_SIZE
+            self.width * cs,
+            self.height * cs
         )
         pygame.draw.rect(screen, wall_color, border_rect, wall_thickness)

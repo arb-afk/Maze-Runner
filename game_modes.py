@@ -10,7 +10,7 @@ from pathfinding import Pathfinder
 from config import *
 
 class GameState:
-    def __init__(self, mode='Explore'):
+    def __init__(self, mode='Explore', selected_ai_algorithm=None):
         self.mode = mode
         self.maze = None
         self.player = None
@@ -20,18 +20,35 @@ class GameState:
         self.winner = None
         self.message = ""
         self.turn = 'player'  # 'player' or 'ai' for turn-based mode
-        self.fog_of_war = False
         self.algorithm_comparison = False
         self.show_hints = False  # Toggle for hint system
-        self.discovered_cells = set()  # For fog of war (player's discovered cells)
-        self.ai_discovered_cells = set()  # For fog of war (AI's discovered cells - separate from player)
         self.algorithm_results_cache = None  # Cache for algorithm comparison
+        self.selected_algorithm = AI_ALGORITHM  # Currently selected algorithm
+        self.show_exploration = False  # Toggle for showing AI exploration visualization (OFF by default)
+        
+        # Fog of war for Blind Duel mode
+        self.fog_of_war_enabled = (mode == 'Blind Duel')
+        self.player_visibility_radius = 2  # Player sees 2 blocks (can increase with rewards)
+        self.ai_visibility_radius = 1  # AI sees only 1 block
+        self.player_discovered_cells = set()  # Cells player has seen
+        self.ai_discovered_cells = set()  # Cells AI has seen
+        
+        # For Blind Duel: always use modified A* (no selection needed)
+        if mode == 'Blind Duel':
+            self.selected_algorithm = 'MODIFIED_ASTAR_FOG'
+        
         self.initialize_game()
     
     def initialize_game(self):
         """Initialize game based on current mode"""
+        # Clear victory screen cache for new game
+        self.victory_screen_cache = None
+        
         # Create maze
         self.maze = Maze(MAZE_WIDTH, MAZE_HEIGHT)
+        
+        # Assign basic terrain (will be overridden by Dynamic mode)
+        self.maze.assign_terrain(include_obstacles=False)
         
         # Create player
         if self.maze.start_pos:
@@ -40,96 +57,59 @@ class GameState:
         # Setup based on mode
         if self.mode == 'Explore':
             self.setup_explore_mode()
-        elif self.mode == 'Dynamic':
-            self.setup_dynamic_mode()
+        elif self.mode == 'Obstacle Course':
+            self.setup_obstacle_course_mode()
         elif self.mode == 'Multi-Goal':
             self.setup_multigoal_mode()
         elif self.mode == 'AI Duel':
             self.setup_ai_duel_mode()
-        elif self.mode == 'AI Duel (Checkpoints)':
-            self.setup_ai_duel_checkpoints_mode()
+        elif self.mode == 'Blind Duel':
+            self.setup_blind_duel_mode()
         
-        # Spawn initial lava obstacles after maze and checkpoints are set up
-        # This ensures path validation includes all checkpoints
-        self.maze.spawn_initial_lava_obstacles()
+        # Spawn initial lava obstacles in all modes (even Obstacle Course)
+        # Lower spawn rate to avoid blocking paths, spawn_initial_lava_obstacles ensures path exists
+        # Use lower spawn rate for better gameplay
+        self.maze.spawn_initial_lava_obstacles(spawn_rate=0.04)  # Reduced from 0.08
         
-        # Initialize discovered cells if fog of war is enabled
-        # Add player's starting position and visibility radius
-        if self.fog_of_war and self.player:
-            px, py = self.player.get_position()
-            from config import FOG_OF_WAR_RADIUS
-            # Discover cells that are inside the maze bounds within visibility radius
-            # Handle case where player starts outside maze (at start_pos = (-1, height//2))
-            # Convert player position to entry cell if outside bounds
-            player_cell_x = max(0, min(px, self.maze.width - 1))  # Clamp to maze bounds
-            player_cell_y = max(0, min(py, self.maze.height - 1))  # Clamp to maze bounds
-            
-            for y in range(max(0, player_cell_y - FOG_OF_WAR_RADIUS), min(self.maze.height, player_cell_y + FOG_OF_WAR_RADIUS + 1)):
-                for x in range(max(0, player_cell_x - FOG_OF_WAR_RADIUS), min(self.maze.width, player_cell_x + FOG_OF_WAR_RADIUS + 1)):
-                    # Calculate distance from actual player position (may be outside maze)
-                    distance = abs(x - px) + abs(y - py)
-                    if distance <= FOG_OF_WAR_RADIUS:
-                        self.discovered_cells.add((x, y))
+        # Spawn reward cells in ALL game modes
+        from config import REWARD_SPAWN_RATE
+        self.maze.spawn_reward_cells(spawn_rate=REWARD_SPAWN_RATE)
         
-        # Compute AI's initial path (without fog restrictions initially - fog can be toggled on later)
+        # Initialize fog of war discovered cells (for Blind Duel mode)
+        if self.fog_of_war_enabled and self.player:
+            self.update_discovered_cells()
+            # Initialize AI memory map with starting position
+            if self.ai_agent:
+                start_terrain = self.maze.terrain.get(self.maze.start_pos, 'GRASS')
+                self.ai_agent.memory_map[self.maze.start_pos] = start_terrain
+                self.ai_agent.recent_positions.append(self.maze.start_pos)
+        
+        # Compute AI's initial path
         if self.ai_agent:
-            if self.mode == 'AI Duel':
-                from config import AI_ALGORITHM
-                algo = 'DSTAR' if self.mode == 'Dynamic' else AI_ALGORITHM
-                # Only restrict if fog is enabled
-                discovered_cells = self.ai_discovered_cells if self.fog_of_war else None
-                if self.maze.goal_pos:
-                    self.ai_agent.compute_path(self.maze.goal_pos, algorithm=algo, discovered_cells=discovered_cells)
-            elif self.mode == 'AI Duel (Checkpoints)':
-                from config import AI_ALGORITHM
-                # Only restrict if fog is enabled
-                discovered_cells = self.ai_discovered_cells if self.fog_of_war else None
+            # For Blind Duel mode, AI can only see discovered cells
+            # For other modes, use None (full visibility)
+            discovered_cells_for_ai = self.ai_discovered_cells if self.fog_of_war_enabled else None
+            
+            if self.mode == 'Multi-Goal':
+                # Multi-Goal has checkpoints - use MULTI_OBJECTIVE
                 if self.maze.goal_pos:
                     if self.maze.checkpoints:
                         goals = self.maze.checkpoints + [self.maze.goal_pos]
-                        self.ai_agent.compute_path(goals, algorithm='MULTI_OBJECTIVE', discovered_cells=discovered_cells)
+                        self.ai_agent.compute_path(goals, algorithm='MULTI_OBJECTIVE', discovered_cells=None)
                     else:
-                        self.ai_agent.compute_path(self.maze.goal_pos, algorithm=AI_ALGORITHM, discovered_cells=discovered_cells)
-        
-        # Initialize AI's discovered cells if fog of war is enabled and AI exists
-        # AI has much smaller visibility radius (only 1 cell) compared to player
-        if self.fog_of_war and self.ai_agent:
-            ai_x, ai_y = self.ai_agent.get_position()
-            from config import AI_FOG_OF_WAR_RADIUS
-            # Discover cells around AI's starting position
-            ai_cell_x = max(0, min(ai_x, self.maze.width - 1))
-            ai_cell_y = max(0, min(ai_y, self.maze.height - 1))
-            
-            for y in range(max(0, ai_cell_y - AI_FOG_OF_WAR_RADIUS), min(self.maze.height, ai_cell_y + AI_FOG_OF_WAR_RADIUS + 1)):
-                for x in range(max(0, ai_cell_x - AI_FOG_OF_WAR_RADIUS), min(self.maze.width, ai_cell_x + AI_FOG_OF_WAR_RADIUS + 1)):
-                    distance = abs(x - ai_x) + abs(y - ai_y)
-                    if distance <= AI_FOG_OF_WAR_RADIUS:
-                        self.ai_discovered_cells.add((x, y))
-            
-            # Always discover the entry/exit cell if AI is at start/goal outside maze
-            if ai_x < 0:  # AI at start_pos outside maze
-                entry_x, entry_y = 0, self.maze.height // 2
-                if self.maze.is_valid(entry_x, entry_y):
-                    self.ai_discovered_cells.add((entry_x, entry_y))
-            elif ai_x >= self.maze.width:  # AI at goal_pos outside maze
-                exit_x, exit_y = self.maze.width - 1, self.maze.height // 2
-                if self.maze.is_valid(exit_x, exit_y):
-                    self.ai_discovered_cells.add((exit_x, exit_y))
-            
-            # Recompute path with fog restrictions now that discovered cells are initialized
-            if self.mode == 'AI Duel':
-                from config import AI_ALGORITHM
-                algo = 'DSTAR' if self.mode == 'Dynamic' else AI_ALGORITHM
-                if self.maze.goal_pos:
-                    self.ai_agent.compute_path(self.maze.goal_pos, algorithm=algo, discovered_cells=self.ai_discovered_cells)
-            elif self.mode == 'AI Duel (Checkpoints)':
-                from config import AI_ALGORITHM
+                        self.ai_agent.compute_path(self.maze.goal_pos, algorithm=self.selected_algorithm, discovered_cells=None)
+            elif self.mode == 'AI Duel':
+                # AI Duel now has checkpoints - use MULTI_OBJECTIVE
                 if self.maze.goal_pos:
                     if self.maze.checkpoints:
                         goals = self.maze.checkpoints + [self.maze.goal_pos]
-                        self.ai_agent.compute_path(goals, algorithm='MULTI_OBJECTIVE', discovered_cells=self.ai_discovered_cells)
+                        self.ai_agent.compute_path(goals, algorithm='MULTI_OBJECTIVE', discovered_cells=None)
                     else:
-                        self.ai_agent.compute_path(self.maze.goal_pos, algorithm=AI_ALGORITHM, discovered_cells=self.ai_discovered_cells)
+                        self.ai_agent.compute_path(self.maze.goal_pos, algorithm=self.selected_algorithm, discovered_cells=None)
+            elif self.mode == 'Blind Duel':
+                # Blind Duel: no checkpoints, use modified A* for fog of war
+                if self.maze.goal_pos:
+                    self.ai_agent.compute_path(self.maze.goal_pos, algorithm='MODIFIED_ASTAR_FOG', discovered_cells=discovered_cells_for_ai)
         
         self.game_over = False
         self.winner = None
@@ -137,26 +117,63 @@ class GameState:
     
     def setup_explore_mode(self):
         """Setup simple static maze mode"""
-        # Static maze, no AI
-        self.ai_agent = None
-        self.ai_pathfinder = None
-        self.fog_of_war = False
-        self.discovered_cells = set()
+        # Create AI agent for visualization purposes (doesn't move, just computes path for exploration viz)
+        # Determine heuristic based on AI difficulty
+        from config import AI_DIFFICULTY, HEURISTIC_TYPE
+        if AI_DIFFICULTY == 'HARD':
+            heuristic = 'EUCLIDEAN'
+        elif AI_DIFFICULTY == 'EASY':
+            heuristic = 'MANHATTAN'
+        else:  # MEDIUM or default
+            heuristic = HEURISTIC_TYPE
+        
+        self.ai_pathfinder = Pathfinder(self.maze, heuristic)
+        if self.maze.start_pos:
+            self.ai_agent = AIAgent(self.maze, self.maze.start_pos, self.ai_pathfinder)
+            # Compute path to goal for exploration visualization
+            if self.maze.goal_pos:
+                self.ai_agent.compute_path(self.maze.goal_pos, algorithm=self.selected_algorithm)
+        else:
+            self.ai_agent = None
+        # Fog of war removed
     
-    def setup_dynamic_mode(self):
-        """Setup dynamic obstacles mode"""
-        # Initial obstacles are spawned after mode setup in initialize_game()
-        self.ai_agent = None
-        self.ai_pathfinder = None
+    def setup_obstacle_course_mode(self):
+        """Setup obstacle course mode with varied terrain costs"""
+        # Add static obstacles to the terrain at generation time
+        # These obstacles stay in place throughout the game (not dynamic)
+        self.maze.assign_terrain(include_obstacles=True)
+        
+        # Create AI agent for visualization purposes (doesn't move, just computes path for exploration viz)
+        # Determine heuristic based on AI difficulty
+        from config import AI_DIFFICULTY, HEURISTIC_TYPE
+        if AI_DIFFICULTY == 'HARD':
+            heuristic = 'EUCLIDEAN'
+        elif AI_DIFFICULTY == 'EASY':
+            heuristic = 'MANHATTAN'
+        else:  # MEDIUM or default
+            heuristic = HEURISTIC_TYPE
+        
+        self.ai_pathfinder = Pathfinder(self.maze, heuristic)
+        if self.maze.start_pos:
+            self.ai_agent = AIAgent(self.maze, self.maze.start_pos, self.ai_pathfinder)
+            # Compute path to goal for exploration visualization
+            # Use selected algorithm (can be cycled with [ ])
+            if self.maze.goal_pos:
+                self.ai_agent.compute_path(self.maze.goal_pos, algorithm=self.selected_algorithm)
+        else:
+            self.ai_agent = None
     
     def setup_multigoal_mode(self):
-        """Setup multi-checkpoint mode"""
+        """Setup multi-checkpoint mode with ordered checkpoints and obstacles"""
+        # Assign terrain with obstacles (spikes, thorns, quicksand, rocks)
+        self.maze.assign_terrain(include_obstacles=True)
+        
         # Clear any existing checkpoints
         self.maze.checkpoints = []
         
-        # Add 2-3 checkpoints on path cells
+        # Add 3 checkpoints in ORDER along the path
         num_checkpoints = 3
-        # Collect all path cells (ensure we have valid paths)
+        # Collect all path cells (ensure we have valid paths, avoid obstacles)
         path_cells = []
         for y in range(self.maze.height):
             for x in range(self.maze.width):
@@ -165,12 +182,25 @@ class GameState:
                         # Make sure it's not too close to start/goal
                         start_dist = abs(x - self.maze.start_pos[0]) + abs(y - self.maze.start_pos[1])
                         goal_dist = abs(x - self.maze.goal_pos[0]) + abs(y - self.maze.goal_pos[1])
-                        if start_dist > 3 and goal_dist > 3:  # At least 3 cells away
+                        # Don't place checkpoints on obstacles
+                        terrain = self.maze.terrain.get((x, y), 'GRASS')
+                        if start_dist > 3 and goal_dist > 3 and terrain not in ['SPIKES', 'THORNS', 'QUICKSAND', 'ROCKS']:
                             path_cells.append((x, y))
         
-        # Randomly select checkpoint positions
+        # Select checkpoints in ORDERED sequence (not random)
+        # Sort by distance from start to create a natural path order
         if path_cells and len(path_cells) >= num_checkpoints:
-            checkpoint_positions = random.sample(path_cells, num_checkpoints)
+            # Sort path cells by distance from start
+            path_cells_sorted = sorted(path_cells, 
+                                      key=lambda p: abs(p[0] - self.maze.start_pos[0]) + 
+                                                   abs(p[1] - self.maze.start_pos[1]))
+            # Select evenly spaced checkpoints along the sorted path
+            interval = len(path_cells_sorted) // (num_checkpoints + 1)
+            checkpoint_positions = []
+            for i in range(1, num_checkpoints + 1):
+                idx = min(i * interval, len(path_cells_sorted) - 1)
+                checkpoint_positions.append(path_cells_sorted[idx])
+            
             for x, y in checkpoint_positions:
                 self.maze.add_checkpoint(x, y)
         elif path_cells:
@@ -178,23 +208,33 @@ class GameState:
             for x, y in path_cells[:num_checkpoints]:
                 self.maze.add_checkpoint(x, y)
         
-        self.ai_agent = None
-        self.ai_pathfinder = None
-    
-    def setup_ai_duel_mode(self):
-        """Setup AI vs Player race mode (turn-based, no checkpoints)"""
-        from config import AI_ALGORITHM
-        self.ai_pathfinder = Pathfinder(self.maze, HEURISTIC_TYPE)
+        # Create AI agent for visualization in Multi-Goal mode
+        # Determine heuristic based on AI difficulty
+        from config import AI_DIFFICULTY, HEURISTIC_TYPE
+        if AI_DIFFICULTY == 'HARD':
+            heuristic = 'EUCLIDEAN'
+        elif AI_DIFFICULTY == 'EASY':
+            heuristic = 'MANHATTAN'
+        else:  # MEDIUM or default
+            heuristic = HEURISTIC_TYPE
+        
+        self.ai_pathfinder = Pathfinder(self.maze, heuristic)
         if self.maze.start_pos:
             self.ai_agent = AIAgent(self.maze, self.maze.start_pos, self.ai_pathfinder)
-            # Initial path will be computed after discovered cells are initialized in initialize_game()
-        self.turn = 'player'  # Player goes first
+            # AI will compute path with checkpoints using MULTI_OBJECTIVE in initialize_game()
+        else:
+            self.ai_agent = None
     
-    def setup_ai_duel_checkpoints_mode(self):
-        """Setup AI vs Player race mode with checkpoints (turn-based)"""
-        # Add checkpoints first
+    def setup_ai_duel_mode(self):
+        """Setup AI vs Player race mode with ordered checkpoints and obstacles"""
+        # Assign terrain with obstacles (spikes, thorns, quicksand, rocks)
+        self.maze.assign_terrain(include_obstacles=True)
+        
+        # Add ordered checkpoints
         self.maze.checkpoints = []
-        num_checkpoints = 2  # Fewer checkpoints for competitive mode
+        num_checkpoints = 3  # 3 checkpoints in order
+        
+        # Find all valid path cells
         path_cells = []
         for y in range(self.maze.height):
             for x in range(self.maze.width):
@@ -202,20 +242,58 @@ class GameState:
                     if (x, y) != self.maze.start_pos and (x, y) != self.maze.goal_pos:
                         start_dist = abs(x - self.maze.start_pos[0]) + abs(y - self.maze.start_pos[1])
                         goal_dist = abs(x - self.maze.goal_pos[0]) + abs(y - self.maze.goal_pos[1])
-                        if start_dist > 3 and goal_dist > 3:
-                            path_cells.append((x, y))
+                        # Don't place checkpoints on obstacles
+                        terrain = self.maze.terrain.get((x, y), 'GRASS')
+                        if start_dist > 5 and goal_dist > 5 and terrain not in ['SPIKES', 'THORNS', 'QUICKSAND', 'ROCKS']:
+                            path_cells.append((x, y, start_dist))
         
-        if path_cells and len(path_cells) >= num_checkpoints:
-            checkpoint_positions = random.sample(path_cells, num_checkpoints)
-            for x, y in checkpoint_positions:
-                self.maze.add_checkpoint(x, y)
+        # Sort by distance from start to create an ordered path
+        if path_cells:
+            path_cells.sort(key=lambda cell: cell[2])
+            
+            # Select evenly spaced checkpoints along the path
+            if len(path_cells) >= num_checkpoints:
+                step = len(path_cells) // (num_checkpoints + 1)
+                for i in range(1, num_checkpoints + 1):
+                    idx = min(i * step, len(path_cells) - 1)
+                    x, y, _ = path_cells[idx]
+                    self.maze.add_checkpoint(x, y)
         
         # Setup AI
         from config import AI_ALGORITHM
-        self.ai_pathfinder = Pathfinder(self.maze, HEURISTIC_TYPE)
+        # Determine heuristic based on AI difficulty
+        from config import AI_DIFFICULTY, HEURISTIC_TYPE
+        if AI_DIFFICULTY == 'HARD':
+            heuristic = 'EUCLIDEAN'
+        elif AI_DIFFICULTY == 'EASY':
+            heuristic = 'MANHATTAN'
+        else:  # MEDIUM or default
+            heuristic = HEURISTIC_TYPE
+        
+        self.ai_pathfinder = Pathfinder(self.maze, heuristic)
         if self.maze.start_pos:
             self.ai_agent = AIAgent(self.maze, self.maze.start_pos, self.ai_pathfinder)
             # Initial path will be computed after discovered cells are initialized in initialize_game()
+        self.turn = 'player'  # Player goes first
+    
+    def setup_blind_duel_mode(self):
+        """Setup Blind Duel mode with fog of war - no checkpoints"""
+        # No checkpoints in Blind Duel
+        self.maze.checkpoints = []
+        
+        # Setup AI
+        # Determine heuristic based on AI difficulty
+        from config import AI_DIFFICULTY, HEURISTIC_TYPE
+        if AI_DIFFICULTY == 'HARD':
+            heuristic = 'EUCLIDEAN'
+        elif AI_DIFFICULTY == 'EASY':
+            heuristic = 'MANHATTAN'
+        else:  # MEDIUM or default
+            heuristic = HEURISTIC_TYPE
+        
+        self.ai_pathfinder = Pathfinder(self.maze, heuristic)
+        if self.maze.start_pos:
+            self.ai_agent = AIAgent(self.maze, self.maze.start_pos, self.ai_pathfinder)
         self.turn = 'player'  # Player goes first
     
     def update(self, dt, current_time):
@@ -223,63 +301,40 @@ class GameState:
         if self.game_over:
             return
         
-        # Update discovered cells for fog of war (player's visibility)
-        if self.fog_of_war:
-            px, py = self.player.get_position()
-            for y in range(max(0, py - FOG_OF_WAR_RADIUS), min(self.maze.height, py + FOG_OF_WAR_RADIUS + 1)):
-                for x in range(max(0, px - FOG_OF_WAR_RADIUS), min(self.maze.width, px + FOG_OF_WAR_RADIUS + 1)):
-                    distance = abs(x - px) + abs(y - py)
-                    if distance <= FOG_OF_WAR_RADIUS:
-                        self.discovered_cells.add((x, y))
-            
-            # Update AI's discovered cells for fog of war (AI's own visibility)
-            if self.ai_agent:
-                ai_x, ai_y = self.ai_agent.get_position()
-                # Discover cells around AI's current position
-                # AI has much smaller visibility radius (only 1 cell) compared to player
-                # Handle case where AI is outside maze bounds
-                from config import AI_FOG_OF_WAR_RADIUS
-                ai_cell_x = max(0, min(ai_x, self.maze.width - 1))
-                ai_cell_y = max(0, min(ai_y, self.maze.height - 1))
-                
-                for y in range(max(0, ai_cell_y - AI_FOG_OF_WAR_RADIUS), min(self.maze.height, ai_cell_y + AI_FOG_OF_WAR_RADIUS + 1)):
-                    for x in range(max(0, ai_cell_x - AI_FOG_OF_WAR_RADIUS), min(self.maze.width, ai_cell_x + AI_FOG_OF_WAR_RADIUS + 1)):
-                        # Calculate distance from actual AI position (may be outside maze)
-                        distance = abs(x - ai_x) + abs(y - ai_y)
-                        if distance <= AI_FOG_OF_WAR_RADIUS:
-                            self.ai_discovered_cells.add((x, y))
+        # Fog of war removed - all cells always visible
+        
+        # Dynamic obstacles are now handled after player move in handle_player_input
         
         # Obstacles are now only updated on player/AI movement, not continuously
         # Check if path is blocked (for AI in duel modes)
         # NOTE: This check is redundant - pathfinding happens in make_ai_move() for turn-based
         # Keeping this for non-turn-based modes, but ensuring it respects fog of war
-        if self.mode in ['AI Duel', 'AI Duel (Checkpoints)'] and self.ai_agent:
+        if self.mode == 'AI Duel' and self.ai_agent:
             goal = self.maze.goal_pos
             if self.ai_agent.needs_replanning(goal):
-                from config import AI_ALGORITHM
-                discovered_cells = self.ai_discovered_cells if self.fog_of_war else None
-                self.ai_agent.compute_path(goal, algorithm=AI_ALGORITHM, discovered_cells=discovered_cells)
+                discovered_cells = None  # Fog of war removed
+                self.ai_agent.compute_path(goal, algorithm=self.selected_algorithm, discovered_cells=discovered_cells)
         
         # Update AI agent in Duel modes (turn-based with adaptive pathfinding)
-        if (self.mode == 'AI Duel' or self.mode == 'AI Duel (Checkpoints)') and self.ai_agent:
-            from config import AI_ALGORITHM
+        if self.mode == 'AI Duel' and self.ai_agent:
             goal = self.maze.goal_pos
-            algorithm = AI_ALGORITHM
-            
-            # Determine algorithm based on mode
-            if self.mode == 'AI Duel (Checkpoints)' and self.maze.checkpoints:
+            # ALWAYS use MULTI_OBJECTIVE if checkpoints exist (ignore selected_algorithm)
+            if self.maze.checkpoints:
                 unvisited = [cp for cp in self.maze.checkpoints if cp not in self.ai_agent.reached_checkpoints]
                 if unvisited:
                     goal = unvisited + [self.maze.goal_pos]
                     algorithm = 'MULTI_OBJECTIVE'
-            elif self.mode == 'Dynamic':
-                algorithm = 'DSTAR'
+                else:
+                    # All checkpoints reached, just go to goal (still use MULTI_OBJECTIVE for consistency)
+                    algorithm = 'MULTI_OBJECTIVE'
+            else:
+                # No checkpoints - use selected algorithm
+                algorithm = self.selected_algorithm
             
             # Adaptive pathfinding: recompute if environment changed
             check_goal = goal if not isinstance(goal, list) else goal[0] if goal else None
             if check_goal and self.ai_agent.needs_replanning(check_goal):
-                # If fog of war is enabled, AI is blind - only use AI's own discovered cells
-                discovered_cells = self.ai_discovered_cells if self.fog_of_war else None
+                discovered_cells = None  # Fog of war removed
                 self.ai_agent.compute_path(goal, algorithm=algorithm, discovered_cells=discovered_cells)
             # Only update if it's AI's turn (turn-based mode)
             if TURN_BASED:
@@ -293,111 +348,65 @@ class GameState:
     
     def make_ai_move(self):
         """Make AI move in turn-based mode"""
-        if (self.mode == 'AI Duel' or self.mode == 'AI Duel (Checkpoints)') and self.ai_agent and self.turn == 'ai':
-            from config import AI_ALGORITHM
-            
+        duel_modes = ['AI Duel', 'Blind Duel']
+        if self.mode in duel_modes and self.ai_agent and self.turn == 'ai':
             # Determine goal and algorithm based on mode
             goal = self.maze.goal_pos
-            algorithm = AI_ALGORITHM
-            
-            if self.mode == 'AI Duel (Checkpoints)' and self.maze.checkpoints:
-                # Use multi-objective search for checkpoint mode
+            # ALWAYS use MULTI_OBJECTIVE if checkpoints exist (ignore selected_algorithm)
+            if self.maze.checkpoints:
                 unvisited = [cp for cp in self.maze.checkpoints if cp not in self.ai_agent.reached_checkpoints]
                 if unvisited:
                     # Pass all unvisited checkpoints + goal for multi-objective
                     goal = unvisited + [self.maze.goal_pos]
                     algorithm = 'MULTI_OBJECTIVE'
                 elif self.maze.goal_pos:
-                    # All checkpoints reached, just go to goal
+                    # All checkpoints reached, just go to goal (still use MULTI_OBJECTIVE for consistency)
                     goal = self.maze.goal_pos
+                    algorithm = 'MULTI_OBJECTIVE'
+            elif self.mode == 'Blind Duel':
+                # Blind Duel: use modified A* for fog of war
+                algorithm = 'MODIFIED_ASTAR_FOG'
             elif self.mode == 'Dynamic':
                 # Use D* for dynamic obstacles
                 algorithm = 'DSTAR'
+            else:
+                # No checkpoints - use selected algorithm
+                algorithm = self.selected_algorithm
             
             # IMPORTANT: Update AI's discovered cells BEFORE pathfinding (if fog of war enabled)
-            # This ensures AI sees its current position before computing path
-            # AI has much smaller visibility radius (only 1 cell) compared to player
-            if self.fog_of_war:
-                ai_x, ai_y = self.ai_agent.get_position()
-                from config import AI_FOG_OF_WAR_RADIUS
-                ai_cell_x = max(0, min(ai_x, self.maze.width - 1))
-                ai_cell_y = max(0, min(ai_y, self.maze.height - 1))
-                
-                for y in range(max(0, ai_cell_y - AI_FOG_OF_WAR_RADIUS), min(self.maze.height, ai_cell_y + AI_FOG_OF_WAR_RADIUS + 1)):
-                    for x in range(max(0, ai_cell_x - AI_FOG_OF_WAR_RADIUS), min(self.maze.width, ai_cell_x + AI_FOG_OF_WAR_RADIUS + 1)):
-                        distance = abs(x - ai_x) + abs(y - ai_y)
-                        if distance <= AI_FOG_OF_WAR_RADIUS:
-                            self.ai_discovered_cells.add((x, y))
-                
-                # Always ensure entry/exit cells are discovered if AI is at start/goal
-                if ai_x < 0:  # AI at start_pos
-                    entry_x, entry_y = 0, self.maze.height // 2
-                    if self.maze.is_valid(entry_x, entry_y):
-                        self.ai_discovered_cells.add((entry_x, entry_y))
-                elif ai_x >= self.maze.width:  # AI at goal_pos
-                    exit_x, exit_y = self.maze.width - 1, self.maze.height // 2
-                    if self.maze.is_valid(exit_x, exit_y):
-                        self.ai_discovered_cells.add((exit_x, exit_y))
-                    # Also discover the goal position itself
-                    if self.maze.goal_pos:
-                        self.ai_discovered_cells.add(self.maze.goal_pos)
+            if self.fog_of_war_enabled:
+                self.update_discovered_cells()
+                discovered_cells = self.ai_discovered_cells
+            else:
+                discovered_cells = None
             
-            # Always recompute path if fog is enabled and we don't have a valid path
-            # (This ensures AI continues moving even if path was computed before fog was enabled)
             check_goal = goal if not isinstance(goal, list) else goal[0] if goal else None
             should_replan = False
             if check_goal:
-                # Replan if needed, OR if fog is enabled and we don't have a valid path through discovered cells
-                if self.ai_agent.needs_replanning(check_goal):
-                    should_replan = True
-                elif self.fog_of_war and (not self.ai_agent.path_result or not self.ai_agent.path_result.path_found):
+                # Replan if needed (always replan in fog of war mode as AI discovers new cells)
+                if self.fog_of_war_enabled or self.ai_agent.needs_replanning(check_goal):
                     should_replan = True
             
             if should_replan:
-                # If fog of war is enabled, AI is blind - only use AI's own discovered cells
-                discovered_cells = self.ai_discovered_cells if self.fog_of_war else None
                 self.ai_agent.compute_path(goal, algorithm=algorithm, discovered_cells=discovered_cells)
                 
-                # If path not found and fog is enabled, try to explore towards goal
-                if self.fog_of_war and (not self.ai_agent.path_result or not self.ai_agent.path_result.path_found):
+                # If path not found, try to explore towards goal
+                if not self.ai_agent.path_result or not self.ai_agent.path_result.path_found:
                     # Find nearest accessible cell in the general direction of goal
                     ai_x, ai_y = self.ai_agent.get_position()
                     goal_x, goal_y = check_goal
                     
                     # Get all valid neighbors from current position
-                    # IMPORTANT: AI can only get neighbors from discovered cells, not from full maze structure
-                    # So we need to check what neighbors exist, but only use discovered ones
+                    # Fog of war removed - all neighbors are accessible
                     neighbors = self.maze.get_neighbors(ai_x, ai_y, False)
-                    
-                    # Filter to only discovered/accessible neighbors if fog enabled
-                    # AI is blind - it can only see discovered cells
-                    accessible_neighbors = []
-                    for nx, ny in neighbors:
-                        # Check if this neighbor is accessible (discovered only, or start position)
-                        if discovered_cells is None:
-                            accessible_neighbors.append((nx, ny))
-                        else:
-                            # Only allow discovered cells (except start position which is always accessible)
-                            if (nx, ny) == self.maze.start_pos:
-                                accessible_neighbors.append((nx, ny))
-                            elif (nx, ny) in discovered_cells:
-                                # All discovered cells are accessible
-                                accessible_neighbors.append((nx, ny))
-                            elif (nx, ny) == check_goal:
-                                # Goal position is only accessible if discovered (true blindness)
-                                if (nx, ny) in discovered_cells:
-                                    accessible_neighbors.append((nx, ny))
+                    accessible_neighbors = neighbors
                     
                     # Find best neighbor for exploration
-                    # AI is truly blind - doesn't know goal location, must explore randomly
                     best_next = None
                     # Use actual visited cells from AI's history, not just current path
                     visited_cells = self.ai_agent.visited_cells if hasattr(self.ai_agent, 'visited_cells') else set()
                     
-                    # Only use goal direction if goal is discovered
-                    goal_discovered = check_goal in self.ai_discovered_cells
-                    
-                    if goal_discovered and accessible_neighbors:
+                    if accessible_neighbors:
                         # Goal discovered - can navigate toward it
                         # Prefer unexplored cells, but penalize recently visited cells
                         ai_path = self.ai_agent.path if hasattr(self.ai_agent, 'path') else []
@@ -482,6 +491,23 @@ class GameState:
             
             # AI can move if it has a valid path
             if self.ai_agent.path_result and self.ai_agent.path_result.path_found:
+                # Check if AI is already at goal (reached it in previous turn)
+                ai_pos = self.ai_agent.get_position()
+                if ai_pos == self.maze.goal_pos:
+                    # AI is at goal - check win conditions immediately
+                    self.check_win_conditions()
+                    # If game is over, return True to stop further processing
+                    # If game is not over (shouldn't happen, but safety check), switch turn to prevent infinite loop
+                    if self.game_over:
+                        return True
+                    else:
+                        # Safety: if AI is at goal but game_over not set, force it
+                        # This prevents infinite loop
+                        self.game_over = True
+                        self.winner = 'AI'
+                        self.message = "AI won! It reached the goal first!"
+                        return True
+                
                 if self.ai_agent.current_path_index < len(self.ai_agent.path) - 1:
                     self.ai_agent.current_path_index += 1
                     next_pos = self.ai_agent.path[self.ai_agent.current_path_index]
@@ -489,27 +515,23 @@ class GameState:
                     old_cost = self.ai_agent.total_cost
                     
                     self.ai_agent.x, self.ai_agent.y = next_pos
+                    
+                    # Debug: Check if we just reached the goal
+                    if next_pos == self.maze.goal_pos:
+                        from config import DEBUG_MODE
+                        if DEBUG_MODE:
+                            print(f"[AI Move] AI reached goal at {next_pos}! current_path_index={self.ai_agent.current_path_index}, path_length={len(self.ai_agent.path)}")
                     # Track visited cell
                     self.ai_agent.visited_cells.add(next_pos)
                     
-                    # Discover new cells immediately after AI moves (before next path computation)
-                    # AI has much smaller visibility radius (only 1 cell) compared to player
-                    if self.fog_of_war:
-                        ai_x, ai_y = self.ai_agent.get_position()
-                        from config import AI_FOG_OF_WAR_RADIUS
-                        ai_cell_x = max(0, min(ai_x, self.maze.width - 1))
-                        ai_cell_y = max(0, min(ai_y, self.maze.height - 1))
-                        
-                        for y in range(max(0, ai_cell_y - AI_FOG_OF_WAR_RADIUS), min(self.maze.height, ai_cell_y + AI_FOG_OF_WAR_RADIUS + 1)):
-                            for x in range(max(0, ai_cell_x - AI_FOG_OF_WAR_RADIUS), min(self.maze.width, ai_cell_x + AI_FOG_OF_WAR_RADIUS + 1)):
-                                distance = abs(x - ai_x) + abs(y - ai_y)
-                                if distance <= AI_FOG_OF_WAR_RADIUS:
-                                    self.ai_discovered_cells.add((x, y))
-                        
-                        # If AI is at or near the exit cell, discover the goal position
-                        if ai_x == self.maze.width - 1 and ai_y == self.maze.height // 2:
-                            if self.maze.goal_pos:
-                                self.ai_discovered_cells.add(self.maze.goal_pos)
+                    # Update memory map for fog of war (Blind Duel mode)
+                    if self.fog_of_war_enabled:
+                        terrain = self.maze.terrain.get((self.ai_agent.x, self.ai_agent.y), 'GRASS')
+                        self.ai_agent.memory_map[(self.ai_agent.x, self.ai_agent.y)] = terrain
+                        # Update recent positions for revisit penalty
+                        self.ai_agent.recent_positions.append((self.ai_agent.x, self.ai_agent.y))
+                        if len(self.ai_agent.recent_positions) > self.ai_agent.max_recent_positions:
+                            self.ai_agent.recent_positions.pop(0)
                     
                     # Check if reached checkpoint
                     checkpoint_reached = False
@@ -531,40 +553,146 @@ class GameState:
                         'checkpoint_reached': checkpoint_reached
                     })
                     
-                    # Update obstacles after AI move (in Dynamic/Duel modes)
-                    if self.mode == 'Dynamic' or self.mode in ['AI Duel', 'AI Duel (Checkpoints)']:
-                        # Pass AI path so terrain changes near AI position
-                        # For AI, we can use a simulated path based on current position
-                        ai_path = [(self.ai_agent.x, self.ai_agent.y)] if self.ai_agent else []
-                        self.maze.update_dynamic_obstacles(ai_path)
-                        
-                        # Ensure path to goal still exists (remove blocking obstacles if needed)
-                        if self.mode in ['Multi-Goal', 'AI Duel (Checkpoints)']:
-                            ai_pos = self.ai_agent.get_position()
-                            self.maze.ensure_path_to_goal(
-                                ai_pos,
-                                self.maze.checkpoints,
-                                self.ai_agent.reached_checkpoints if hasattr(self.ai_agent, 'reached_checkpoints') else []
-                            )
-                        
-                        # Also ensure player's path is still valid (for Multi-Goal mode)
-                        if self.mode == 'Multi-Goal':
-                            player_pos = self.player.get_position()
-                            self.maze.ensure_path_to_goal(
-                                player_pos,
-                                self.maze.checkpoints,
-                                self.player.reached_checkpoints
-                            )
-                        
-                        # Check if path needs replanning after obstacle change
-                        if self.ai_agent.needs_replanning(goal):
-                            # If fog of war is enabled, AI is blind - only use AI's own discovered cells
-                            discovered_cells = self.ai_discovered_cells if self.fog_of_war else None
-                            self.ai_agent.compute_path(goal, algorithm=AI_ALGORITHM, discovered_cells=discovered_cells)
+                    # Check win conditions immediately after AI moves (to detect AI win)
+                    self.check_win_conditions()
+                    
+                    # If AI won, don't switch turns (game is over)
+                    if self.game_over:
+                        return True
+                    
+                    # All modes are fully static - no spawning during gameplay
+                    # Terrain and obstacles are set at maze generation
                     
                     # Switch back to player's turn
                     self.turn = 'player'
                     return True
+                else:
+                    # AI is at the end of the path (can't move further)
+                    # Check if AI is at goal - if so, check win conditions
+                    ai_pos = self.ai_agent.get_position()
+                    path_end_pos = self.ai_agent.path[-1] if self.ai_agent.path else None
+                    from config import DEBUG_MODE
+                    if DEBUG_MODE:
+                        print(f"[AI Move] AI at end of path. Position={ai_pos}, Goal={self.maze.goal_pos}, Path end={path_end_pos}, Path length={len(self.ai_agent.path) if self.ai_agent.path else 0}")
+                    
+                    if ai_pos == self.maze.goal_pos:
+                        from config import DEBUG_MODE
+                        if DEBUG_MODE:
+                            print(f"[AI Move] AI is at goal! Checking win conditions...")
+                        self.check_win_conditions()
+                        if self.game_over:
+                            if DEBUG_MODE:
+                                print(f"[AI Move] Game over set, winner={self.winner}")
+                            return True
+                        else:
+                            # Safety: if AI is at goal but game_over not set, force it
+                            if DEBUG_MODE:
+                                print(f"[AI Move] AI at goal but game_over not set! Forcing game over...")
+                            self.game_over = True
+                            self.winner = 'AI'
+                            self.message = "AI won! It reached the goal first!"
+                            return True
+                    elif path_end_pos == self.maze.goal_pos and ai_pos != self.maze.goal_pos:
+                        # Path ends at goal but AI position isn't there yet - force move to goal
+                        from config import DEBUG_MODE
+                        if DEBUG_MODE:
+                            print(f"[AI Move] Path ends at goal but AI not there! Forcing move to goal...")
+                        old_pos = (self.ai_agent.x, self.ai_agent.y)
+                        old_cost = self.ai_agent.total_cost
+                        self.ai_agent.x, self.ai_agent.y = self.maze.goal_pos
+                        self.ai_agent.visited_cells.add(self.maze.goal_pos)
+                        
+                        # Update cost
+                        move_cost = self.maze.get_cost(self.ai_agent.x, self.ai_agent.y)
+                        self.ai_agent.total_cost += move_cost
+                        
+                        # Save move
+                        self.ai_agent.move_history.append({
+                            'old_pos': old_pos,
+                            'new_pos': self.maze.goal_pos,
+                            'cost': move_cost,
+                            'total_cost_before': old_cost,
+                            'checkpoint_reached': False
+                        })
+                        
+                        # Check win conditions
+                        self.check_win_conditions()
+                        if self.game_over:
+                            return True
+                        else:
+                            self.game_over = True
+                            self.winner = 'AI'
+                            self.message = "AI won! It reached the goal first!"
+                            return True
+                    else:
+                        # If AI is adjacent to goal but stopped early, force it to move to goal
+                        goal_x, goal_y = self.maze.goal_pos
+                        ai_x, ai_y = ai_pos
+                        manhattan_distance = abs(ai_x - goal_x) + abs(ai_y - goal_y)
+                        
+                        if manhattan_distance == 1:
+                            from config import DEBUG_MODE
+                            if DEBUG_MODE:
+                                print(f"[AI Move] AI adjacent to goal (distance=1), forcing move to goal...")
+                            old_pos = (self.ai_agent.x, self.ai_agent.y)
+                            old_cost = self.ai_agent.total_cost
+                            self.ai_agent.x, self.ai_agent.y = self.maze.goal_pos
+                            self.ai_agent.visited_cells.add(self.maze.goal_pos)
+                            
+                            # Update memory map for fog of war (Blind Duel mode)
+                            if self.fog_of_war_enabled:
+                                terrain = self.maze.terrain.get((self.ai_agent.x, self.ai_agent.y), 'GRASS')
+                                self.ai_agent.memory_map[(self.ai_agent.x, self.ai_agent.y)] = terrain
+                                self.ai_agent.recent_positions.append((self.ai_agent.x, self.ai_agent.y))
+                                if len(self.ai_agent.recent_positions) > self.ai_agent.max_recent_positions:
+                                    self.ai_agent.recent_positions.pop(0)
+                            
+                            move_cost = self.maze.get_cost(goal_x, goal_y)
+                            self.ai_agent.total_cost += move_cost
+                            
+                            self.ai_agent.move_history.append({
+                                'old_pos': old_pos,
+                                'new_pos': self.maze.goal_pos,
+                                'cost': move_cost,
+                                'total_cost_before': old_cost,
+                                'checkpoint_reached': False
+                            })
+                            
+                            self.check_win_conditions()
+                            if not self.game_over:
+                                self.game_over = True
+                                self.winner = 'AI'
+                                self.message = "AI won! It reached the goal first!"
+                            return True
+                        
+                        # If not at goal and not adjacent, switch turn to prevent infinite loop
+                        self.turn = 'player'
+                        return True
+        return False
+    
+    def can_player_afford_any_move(self):
+        """Check if player has enough energy to make ANY move (even to visited cells)"""
+        player_pos = self.player.get_position()
+        
+        # Check all four directions
+        for dx, dy in [(0, -1), (1, 0), (0, 1), (-1, 0)]:
+            new_x, new_y = player_pos[0] + dx, player_pos[1] + dy
+            
+            # Check if cell is valid and passable
+            if self.maze.is_valid(new_x, new_y) and self.maze.is_passable(new_x, new_y):
+                move_cost = self.maze.get_cost(new_x, new_y)
+                
+                # Apply reward bonus if active
+                actual_cost = move_cost
+                if self.player.reward_active and self.player.reward_moves_left > 0:
+                    from config import REWARD_BONUS
+                    actual_cost = max(0, move_cost + REWARD_BONUS)
+                
+                # If player can afford this move, return True
+                if actual_cost != float('inf') and self.player.energy >= actual_cost:
+                    return True
+        
+        # Can't afford any move
         return False
     
     def is_player_trapped(self):
@@ -588,10 +716,18 @@ class GameState:
         
         # No unvisited moves - check if there's still a path to goal
         # (considering visited cells as blocked)
-        pathfinder = Pathfinder(self.maze, HEURISTIC_TYPE)
+        # Determine heuristic based on AI difficulty
+        from config import AI_DIFFICULTY, HEURISTIC_TYPE
+        if AI_DIFFICULTY == 'HARD':
+            heuristic = 'EUCLIDEAN'
+        elif AI_DIFFICULTY == 'EASY':
+            heuristic = 'MANHATTAN'
+        else:  # MEDIUM or default
+            heuristic = HEURISTIC_TYPE
+        pathfinder = Pathfinder(self.maze, heuristic)
         
         # In multi-goal/checkpoint modes, check path through ALL unvisited checkpoints to goal
-        if (self.mode == 'Multi-Goal' or self.mode == 'AI Duel (Checkpoints)') and self.maze.checkpoints:
+        if self.mode in ['Multi-Goal', 'AI Duel'] and self.maze.checkpoints:
             unvisited = [cp for cp in self.maze.checkpoints if cp not in self.player.reached_checkpoints]
             if unvisited:
                 # Check if there's a path through all unvisited checkpoints (in any order) to goal
@@ -645,72 +781,131 @@ class GameState:
         """Check if game is won or lost"""
         player_pos = self.player.get_position()
         
-        # Check if player reached goal
-        if player_pos == self.maze.goal_pos:
-            if self.mode == 'Multi-Goal':
-                if self.player.has_reached_all_checkpoints():
-                    self.game_over = True
-                    self.winner = 'Player'
-                    self.message = "Victory! You reached all checkpoints and the goal!"
+        # In AI Duel modes, check both player and AI simultaneously to determine winner
+        # (whoever reaches goal first with all checkpoints wins)
+        if self.mode in ['AI Duel', 'Blind Duel']:
+            player_won = False
+            ai_won = False
+            
+            # Check if player reached goal
+            if player_pos == self.maze.goal_pos:
+                if self.maze.checkpoints:
+                    if self.player.has_reached_all_checkpoints():
+                        player_won = True
                 else:
-                    # Player reached goal but not all checkpoints - don't win
+                    # No checkpoints - just reach goal
+                    player_won = True
+            
+            # Check if AI reached goal
+            if self.ai_agent:
+                ai_pos = self.ai_agent.get_position()
+                if ai_pos == self.maze.goal_pos:
+                    if self.maze.checkpoints:
+                        # Check if AI visited all checkpoints in order
+                        if hasattr(self.ai_agent, 'reached_checkpoints'):
+                            if len(self.ai_agent.reached_checkpoints) == len(self.maze.checkpoints):
+                                # Verify order
+                                ai_visited_in_order = True
+                                for i, cp in enumerate(self.maze.checkpoints):
+                                    if i >= len(self.ai_agent.reached_checkpoints) or self.ai_agent.reached_checkpoints[i] != cp:
+                                        ai_visited_in_order = False
+                                        break
+                                
+                                if ai_visited_in_order:
+                                    ai_won = True
+                    else:
+                        # No checkpoints (Blind Duel mode) - just reach goal
+                        ai_won = True
+                        from config import DEBUG_MODE
+                        if DEBUG_MODE:
+                            print(f"[Win Condition] AI reached goal at {ai_pos} in {self.mode} mode!")
+            
+            # Determine winner (if both reach goal, player wins by default - player has priority)
+            if player_won:
+                self.game_over = True
+                self.winner = 'Player'
+                if self.maze.checkpoints:
+                    self.message = "Victory! You visited all checkpoints in order and reached the goal first!"
+                else:
+                    self.message = "Victory! You reached the goal first!"
+            elif ai_won:
+                self.game_over = True
+                self.winner = 'AI'
+                if self.maze.checkpoints:
+                    self.message = "AI won! It visited all checkpoints in order and reached the goal first!"
+                else:
+                    self.message = "AI won! It reached the goal first!"
+                from config import DEBUG_MODE
+                if DEBUG_MODE:
+                    print(f"[Win Condition] AI WON! Game over set to True, winner = {self.winner}")
+        
+        # Check if player reached goal (for non-duel modes)
+        elif player_pos == self.maze.goal_pos:
+            # Modes with checkpoints require visiting all checkpoints IN ORDER
+            if self.mode in ['Multi-Goal']:
+                if self.maze.checkpoints and not self.player.has_reached_all_checkpoints():
+                    # Player reached goal but not all checkpoints in order - don't win
                     missing = len(self.maze.checkpoints) - len(self.player.reached_checkpoints)
                     self.game_over = False  # Prevent win
-                    # Don't show message, just prevent winning
-            elif self.mode == 'AI Duel (Checkpoints)':
-                # Need to check checkpoints in this mode too
-                if self.player.has_reached_all_checkpoints():
+                    # Show feedback about missing checkpoints
+                    from config import DEBUG_MODE
+                    if DEBUG_MODE:
+                        if len(self.player.reached_checkpoints) < len(self.maze.checkpoints):
+                            next_checkpoint_num = len(self.player.reached_checkpoints) + 1
+                            print(f"[Win Condition] Must visit checkpoint {next_checkpoint_num} before goal!")
+                        else:
+                            print(f"[Win Condition] Checkpoints must be visited in order (1→2→3→Goal)!")
+                else:
+                    # Either no checkpoints or all visited in order
                     self.game_over = True
                     self.winner = 'Player'
-                    self.message = "Victory! You reached all checkpoints and the goal!"
-                else:
-                    # Player reached goal but not all checkpoints - don't win
-                    self.game_over = False  # Prevent win
-                    # Don't show message, just prevent winning
+                    if self.maze.checkpoints:
+                        self.message = "Victory! You visited all checkpoints in order and reached the goal!"
+                    else:
+                        self.message = "Victory! You reached the goal!"
             else:
+                # Other modes - just reach goal
                 self.game_over = True
                 self.winner = 'Player'
                 self.message = "Victory! You reached the goal!"
         
-        # Check AI win in duel modes
-        if (self.mode == 'AI Duel' or self.mode == 'AI Duel (Checkpoints)') and self.ai_agent:
-            ai_pos = self.ai_agent.get_position()
-            if self.mode == 'AI Duel':
-                if ai_pos == self.maze.goal_pos:
-                    self.game_over = True
-                    self.winner = 'AI'
-                    self.message = "AI won! Better luck next time!"
-            elif self.mode == 'AI Duel (Checkpoints)':
-                # AI needs to visit all checkpoints and reach goal
-                if ai_pos == self.maze.goal_pos:
-                    if len(self.ai_agent.reached_checkpoints) == len(self.maze.checkpoints):
-                        self.game_over = True
-                        self.winner = 'AI'
-                        self.message = "AI won! Better luck next time!"
+        # Check if player ran out of energy or can't afford any move (PRIORITY CHECK - before trapped)
+        if not self.game_over:
+            if self.player.energy <= 0:
+                self.game_over = True
+                self.winner = None
+                self.message = "Out of Energy! You ran out of fuel before reaching the goal!"
+            elif not self.can_player_afford_any_move():
+                # Player has energy but can't afford any available move
+                self.game_over = True
+                self.winner = None
+                self.message = "Out of Energy! Not enough fuel for any available move!"
         
-        # Check if player is trapped (no valid path to goal or no unvisited moves)
+        # Check if player is trapped (no valid moves available)
         if not self.game_over:
             if self.is_player_trapped():
                 self.game_over = True
                 self.winner = None
-                self.message = "You're Trapped! No valid path remaining. Use Undo (U) or Reset (R)!"
-        
-        # Check if player ran out of energy
-        if self.player.energy <= 0:
-            self.game_over = True
-            self.winner = None
-            self.message = "Game Over! You ran out of energy!"
+                self.message = "Trapped! No valid moves remaining. All paths are blocked!"
     
     def get_hint(self):
         """Get hint for player's next move"""
         if self.game_over:
             return None
         
-        pathfinder = Pathfinder(self.maze, HEURISTIC_TYPE)
+        # Determine heuristic based on AI difficulty
+        from config import AI_DIFFICULTY, HEURISTIC_TYPE
+        if AI_DIFFICULTY == 'HARD':
+            heuristic = 'EUCLIDEAN'
+        elif AI_DIFFICULTY == 'EASY':
+            heuristic = 'MANHATTAN'
+        else:  # MEDIUM or default
+            heuristic = HEURISTIC_TYPE
+        pathfinder = Pathfinder(self.maze, heuristic)
         current_pos = self.player.get_position()
         
         # In multi-goal/checkpoint modes, find path through all unvisited checkpoints to goal
-        if (self.mode == 'Multi-Goal' or self.mode == 'AI Duel (Checkpoints)') and self.maze.checkpoints:
+        if self.mode in ['Multi-Goal', 'AI Duel'] and self.maze.checkpoints:
             unvisited = [cp for cp in self.maze.checkpoints if cp not in self.player.reached_checkpoints]
             if unvisited:
                 # Try to find a path through all unvisited checkpoints to goal
@@ -763,249 +958,64 @@ class GameState:
     def reset(self):
         """Reset game state"""
         mode = self.mode
-        fog = self.fog_of_war
         algo = self.algorithm_comparison
         hints = self.show_hints
         self.initialize_game()
         self.mode = mode
-        self.fog_of_war = fog
         self.algorithm_comparison = algo
         self.show_hints = hints
-        # Reset discovered cells
-        self.discovered_cells = set()
-        self.ai_discovered_cells = set()
     
-    def toggle_fog_of_war(self):
-        """Toggle fog of war mode"""
-        self.fog_of_war = not self.fog_of_war
-        
-        if self.fog_of_war:
-            # Fog turned ON - initialize discovered cells for both player and AI
-            if self.player:
-                # IMPORTANT: Discover all cells the player has already visited in their path history
-                # This ensures the player "remembers" where they have been if fog is enabled mid-game
-                if hasattr(self.player, 'path') and self.player.path:
-                    for pos in self.player.path:
-                        px, py = pos
-                        from config import FOG_OF_WAR_RADIUS
-                        # Discover cells around each position in player's path history
-                        path_cell_x = max(0, min(px, self.maze.width - 1))
-                        path_cell_y = max(0, min(py, self.maze.height - 1))
-                        
-                        for y in range(max(0, path_cell_y - FOG_OF_WAR_RADIUS), min(self.maze.height, path_cell_y + FOG_OF_WAR_RADIUS + 1)):
-                            for x in range(max(0, path_cell_x - FOG_OF_WAR_RADIUS), min(self.maze.width, path_cell_x + FOG_OF_WAR_RADIUS + 1)):
-                                distance = abs(x - px) + abs(y - py)
-                                if distance <= FOG_OF_WAR_RADIUS:
-                                    self.discovered_cells.add((x, y))
-                
-                # Also discover cells around player's current position
-                px, py = self.player.get_position()
-                from config import FOG_OF_WAR_RADIUS
-                player_cell_x = max(0, min(px, self.maze.width - 1))
-                player_cell_y = max(0, min(py, self.maze.height - 1))
-                for y in range(max(0, player_cell_y - FOG_OF_WAR_RADIUS), min(self.maze.height, player_cell_y + FOG_OF_WAR_RADIUS + 1)):
-                    for x in range(max(0, player_cell_x - FOG_OF_WAR_RADIUS), min(self.maze.width, player_cell_x + FOG_OF_WAR_RADIUS + 1)):
-                        distance = abs(x - px) + abs(y - py)
-                        if distance <= FOG_OF_WAR_RADIUS:
-                            self.discovered_cells.add((x, y))
-            
-            if self.ai_agent:
-                ai_x, ai_y = self.ai_agent.get_position()
-                
-                # CRITICAL: For true blindness when fog is enabled mid-game, only discover what AI can currently see
-                # Do NOT discover entire path history - AI should "forget" where it has been
-                # This makes the AI truly blind when fog is toggled on, just like starting with fog enabled
-                from config import AI_FOG_OF_WAR_RADIUS
-                
-                # Only discover cells around AI's current position (radius 1)
-                # Handle case where AI is outside maze (at start_pos = (-1, height//2))
-                ai_cell_x = max(0, min(ai_x, self.maze.width - 1))
-                ai_cell_y = max(0, min(ai_y, self.maze.height - 1))
-                
-                for y in range(max(0, ai_cell_y - AI_FOG_OF_WAR_RADIUS), min(self.maze.height, ai_cell_y + AI_FOG_OF_WAR_RADIUS + 1)):
-                    for x in range(max(0, ai_cell_x - AI_FOG_OF_WAR_RADIUS), min(self.maze.width, ai_cell_x + AI_FOG_OF_WAR_RADIUS + 1)):
-                        # Calculate distance from actual AI position (may be outside maze)
-                        distance = abs(x - ai_x) + abs(y - ai_y)
-                        if distance <= AI_FOG_OF_WAR_RADIUS:
-                            self.ai_discovered_cells.add((x, y))
-                
-                # Always discover the entry cell if AI starts outside (at start_pos)
-                if ai_x < 0:  # AI is at start_pos outside maze
-                    entry_x, entry_y = 0, self.maze.height // 2
-                    if self.maze.is_valid(entry_x, entry_y):
-                        self.ai_discovered_cells.add((entry_x, entry_y))
-                
-                # Discover goal position if AI is near exit cell or has visited it
-                exit_x, exit_y = self.maze.width - 1, self.maze.height // 2
-                if (exit_x, exit_y) in self.ai_discovered_cells and self.maze.goal_pos:
-                    self.ai_discovered_cells.add(self.maze.goal_pos)
-                
-                # CRITICAL: When fog is toggled on mid-game, invalidate the AI's existing path
-                # The old path was computed with full visibility and should not be used
-                # Force AI to recompute path with only discovered cells
-                self.ai_agent.path_result = None
-                self.ai_agent.path = []
-                self.ai_agent.current_path_index = 0
-                
-                # Recompute AI path with fog restrictions
-                if self.mode == 'AI Duel' or self.mode == 'AI Duel (Checkpoints)':
-                    from config import AI_ALGORITHM
-                    goal = self.maze.goal_pos
-                    algorithm = AI_ALGORITHM
-                    
-                    if self.mode == 'AI Duel (Checkpoints)' and self.maze.checkpoints:
-                        unvisited = [cp for cp in self.maze.checkpoints if cp not in self.ai_agent.reached_checkpoints]
-                        if unvisited:
-                            goal = unvisited + [self.maze.goal_pos]
-                            algorithm = 'MULTI_OBJECTIVE'
-                    
-                    check_goal = goal if not isinstance(goal, list) else goal[0] if goal else None
-                    
-                    # Only try to pathfind if goal is discovered, otherwise pathfinding will fail
-                    # and we'll use random exploration fallback
-                    goal_discovered = check_goal in self.ai_discovered_cells if check_goal else False
-                    if goal_discovered:
-                        self.ai_agent.compute_path(goal, algorithm=algorithm, discovered_cells=self.ai_discovered_cells)
-                    else:
-                        # Goal not discovered - clear path result so fallback exploration is used
-                        self.ai_agent.path_result = None
-                    
-                    # If path not found, provide fallback exploration path
-                    if not self.ai_agent.path_result or not self.ai_agent.path_result.path_found:
-                        ai_x, ai_y = self.ai_agent.get_position()
-                        neighbors = self.maze.get_neighbors(ai_x, ai_y, False)
-                        
-                        # Filter to accessible neighbors
-                        accessible_neighbors = []
-                        for nx, ny in neighbors:
-                            if (nx, ny) == self.maze.start_pos:
-                                accessible_neighbors.append((nx, ny))
-                            elif (nx, ny) in self.ai_discovered_cells:
-                                accessible_neighbors.append((nx, ny))
-                            elif (nx, ny) == check_goal:
-                                # Goal position is only accessible if discovered (true blindness)
-                                if (nx, ny) in self.ai_discovered_cells:
-                                    accessible_neighbors.append((nx, ny))
-                        
-                        # Find best neighbor for exploration
-                        # AI is truly blind - doesn't know goal location unless discovered, must explore randomly
-                        best_next = None
-                        # Use actual visited cells from AI's history, not just current path
-                        visited_cells = self.ai_agent.visited_cells if hasattr(self.ai_agent, 'visited_cells') else set()
-                        
-                        # Only use goal direction if goal is discovered
-                        goal_discovered = check_goal in self.ai_discovered_cells if check_goal else False
-                        
-                        if accessible_neighbors:
-                            if goal_discovered and check_goal:
-                                # Goal discovered - can navigate toward it
-                                # Prefer unexplored cells, but penalize recently visited cells
-                                goal_x, goal_y = check_goal
-                                ai_path = self.ai_agent.path if hasattr(self.ai_agent, 'path') else []
-                                min_dist = float('inf')
-                                for nx, ny in accessible_neighbors:
-                                    dist = abs(nx - goal_x) + abs(ny - goal_y)
-                                    is_visited = (nx, ny) in visited_cells
-                                    is_recent_visit = (nx, ny) in ai_path[-3:] if len(ai_path) >= 3 else False
-                                    # Strongly prefer unexplored cells, penalize visited and recently visited
-                                    score = dist + (200 if is_visited else 0) + (100 if is_recent_visit else 0)
-                                    if score < min_dist:
-                                        min_dist = score
-                                        best_next = (nx, ny)
-                            else:
-                                # Goal not discovered - explore randomly, STRONGLY prefer unexplored cells
-                                unexplored = [n for n in accessible_neighbors if n not in visited_cells]
-                                if unexplored:
-                                    import random
-                                    best_next = random.choice(unexplored)
-                                else:
-                                    # All neighbors explored - backtrack intelligently
-                                    # Avoid immediate back-and-forth by preferring positions further back in history
-                                    ai_move_history = self.ai_agent.move_history if hasattr(self.ai_agent, 'move_history') else []
-                                    current_pos = (ai_x, ai_y)
-                                    
-                                    # Get the immediate previous position (from last move)
-                                    previous_pos = None
-                                    if ai_move_history:
-                                        last_move = ai_move_history[-1]
-                                        previous_pos = last_move.get('old_pos')  # Position we came from
-                                    
-                                    # Score each neighbor: prefer positions that are further back in history
-                                    scored_neighbors = []
-                                    for nx, ny in accessible_neighbors:
-                                        score = 1000  # Base score
-                                        
-                                        # Strongly penalize immediate backtrack (previous position)
-                                        if (nx, ny) == previous_pos:
-                                            score = 0  # Avoid immediate back-and-forth
-                                            scored_neighbors.append((score, (nx, ny)))
-                                            continue
-                                        
-                                        # Check how many moves ago this position was visited
-                                        found_in_history = False
-                                        for i, move in enumerate(reversed(ai_move_history[-15:])):  # Look at last 15 moves
-                                            if move.get('old_pos') == (nx, ny) or move.get('new_pos') == (nx, ny):
-                                                # Further back in history = higher score (preferred for backtracking)
-                                                # Position visited 10 moves ago is better than position visited 2 moves ago
-                                                score = 100 + (15 - i) * 10  # More moves ago = higher score
-                                                found_in_history = True
-                                                break
-                                        
-                                        # If position is not in recent history, it might be a good backtrack target
-                                        # but less preferred than positions we know we've been to
-                                        if not found_in_history:
-                                            score = 50  # Lower score than known positions in history
-                                        
-                                        scored_neighbors.append((score, (nx, ny)))
-                                    
-                                    # Sort by score (highest first) and pick the best
-                                    scored_neighbors.sort(reverse=True, key=lambda x: x[0])
-                                    if scored_neighbors and scored_neighbors[0][0] > 0:
-                                        best_next = scored_neighbors[0][1]
-                                    else:
-                                        # All neighbors are immediate previous position - must backtrack anyway
-                                        # Choose the one furthest back in history
-                                        import random
-                                        best_next = random.choice(accessible_neighbors)
-                            
-                            if best_next:
-                                from pathfinding import PathfindingResult
-                                result = PathfindingResult()
-                                result.path_found = True
-                                result.path = [(ai_x, ai_y), best_next]
-                                result.cost = self.maze.get_cost(best_next[0], best_next[1])
-                                self.ai_agent.path_result = result
-                                self.ai_agent.path = [(ai_x, ai_y), best_next]
-                                self.ai_agent.current_path_index = 0
-        else:
-            # Fog turned OFF - clear discovered cells and recompute AI path with full visibility
-            self.discovered_cells = set()
-            self.ai_discovered_cells = set()
-            
-            # Recompute AI path with full visibility (no fog restrictions)
-            if self.ai_agent and (self.mode == 'AI Duel' or self.mode == 'AI Duel (Checkpoints)'):
-                from config import AI_ALGORITHM
-                goal = self.maze.goal_pos
-                algorithm = AI_ALGORITHM
-                
-                if self.mode == 'AI Duel (Checkpoints)' and self.maze.checkpoints:
-                    unvisited = [cp for cp in self.maze.checkpoints if cp not in self.ai_agent.reached_checkpoints]
-                    if unvisited:
-                        goal = unvisited + [self.maze.goal_pos]
-                        algorithm = 'MULTI_OBJECTIVE'
-                
-                self.ai_agent.compute_path(goal, algorithm=algorithm, discovered_cells=None)
+    # Fog of war removed - toggle method deleted
     
     def toggle_algorithm_comparison(self):
         """Toggle algorithm comparison dashboard"""
         self.algorithm_comparison = not self.algorithm_comparison
-        # Clear cache when toggling off, so it recalculates when toggled on again
-        if not self.algorithm_comparison:
-            self.algorithm_results_cache = None
+        # Don't clear cache - keep it so times stay consistent when toggling
+        # Cache will be cleared automatically when maze/obstacles change
+    
+    # Fog of war code removed
     
     def toggle_hints(self):
         """Toggle hint system"""
         self.show_hints = not self.show_hints
+    
+    def toggle_exploration_viz(self):
+        """Toggle exploration visualization"""
+        self.show_exploration = not self.show_exploration
+    
+    def cycle_algorithm(self, forward=True):
+        """Cycle to next/previous available algorithm
+        
+        Args:
+            forward: If True, cycle forward, if False cycle backward
+        """
+        from config import AVAILABLE_ALGORITHMS
+        current_index = AVAILABLE_ALGORITHMS.index(self.selected_algorithm) if self.selected_algorithm in AVAILABLE_ALGORITHMS else 0
+        if forward:
+            next_index = (current_index + 1) % len(AVAILABLE_ALGORITHMS)
+        else:
+            next_index = (current_index - 1) % len(AVAILABLE_ALGORITHMS)
+        self.selected_algorithm = AVAILABLE_ALGORITHMS[next_index]
+        
+        # Recompute AI path with new algorithm if AI exists
+        if self.ai_agent:
+            goal = self.maze.goal_pos
+            # ALWAYS use MULTI_OBJECTIVE if checkpoints exist (ignore selected_algorithm for gameplay)
+            if self.maze.checkpoints and self.mode in ['Multi-Goal', 'AI Duel']:
+                unvisited = [cp for cp in self.maze.checkpoints 
+                           if cp not in (self.ai_agent.reached_checkpoints if hasattr(self.ai_agent, 'reached_checkpoints') else [])]
+                if unvisited:
+                    goal = unvisited + [self.maze.goal_pos]
+                    algorithm = 'MULTI_OBJECTIVE'
+                else:
+                    # All checkpoints reached, still use MULTI_OBJECTIVE for consistency
+                    algorithm = 'MULTI_OBJECTIVE'
+            else:
+                # No checkpoints - use selected algorithm
+                algorithm = self.selected_algorithm
+            
+            # Fog of war removed - always use full visibility
+            self.ai_agent.compute_path(goal, algorithm=algorithm, discovered_cells=None)
     
     def undo_move(self):
         """Undo last move - affects both player and AI in competitive modes"""
@@ -1018,7 +1028,7 @@ class GameState:
             player_undone = self.player.undo()
         
         # In competitive modes, also undo AI move
-        if (self.mode == 'AI Duel' or self.mode == 'AI Duel (Checkpoints)') and self.ai_agent:
+        if self.mode == 'AI Duel' and self.ai_agent:
             if player_undone:  # Only undo AI if player undo was successful
                 ai_undone = self.ai_agent.undo()
                 # If AI undo happened, it's still AI's turn (synchronized undo)
@@ -1026,4 +1036,106 @@ class GameState:
                 # self.turn = 'player'  # Player goes again after undo
         
         return player_undone
+
+    # Fog of war code removed - all orphaned code deleted
+    
+    def toggle_algorithm_comparison(self):
+        """Toggle algorithm comparison dashboard"""
+        self.algorithm_comparison = not self.algorithm_comparison
+        # Don't clear cache - keep it so times stay consistent when toggling
+        # Cache will be cleared automatically when maze/obstacles change
+    
+    def toggle_hints(self):
+        """Toggle hint system"""
+        self.show_hints = not self.show_hints
+    
+    def toggle_exploration_viz(self):
+        """Toggle exploration visualization"""
+        self.show_exploration = not self.show_exploration
+    
+    def cycle_algorithm(self, forward=True):
+        """Cycle to next/previous available algorithm
+        
+        Args:
+            forward: If True, cycle forward, if False cycle backward
+        """
+        from config import AVAILABLE_ALGORITHMS
+        current_index = AVAILABLE_ALGORITHMS.index(self.selected_algorithm) if self.selected_algorithm in AVAILABLE_ALGORITHMS else 0
+        if forward:
+            next_index = (current_index + 1) % len(AVAILABLE_ALGORITHMS)
+        else:
+            next_index = (current_index - 1) % len(AVAILABLE_ALGORITHMS)
+        self.selected_algorithm = AVAILABLE_ALGORITHMS[next_index]
+        
+        # Recompute AI path with new algorithm if AI exists
+        if self.ai_agent:
+            goal = self.maze.goal_pos
+            algorithm = self.selected_algorithm
+            
+            # Handle special modes
+            if self.mode in ['Multi-Goal', 'AI Duel'] and self.maze.checkpoints:
+                unvisited = [cp for cp in self.maze.checkpoints 
+                           if cp not in (self.ai_agent.reached_checkpoints if hasattr(self.ai_agent, 'reached_checkpoints') else [])]
+                if unvisited:
+                    goal = unvisited + [self.maze.goal_pos]
+                    algorithm = 'MULTI_OBJECTIVE'
+            
+            discovered_cells = None  # Fog of war removed
+            self.ai_agent.compute_path(goal, algorithm=algorithm, discovered_cells=discovered_cells)
+    
+    def undo_move(self):
+        """Undo last move - affects both player and AI in competitive modes"""
+        if self.game_over:
+            return False
+        
+        # Undo player move
+        player_undone = False
+        if self.player:
+            player_undone = self.player.undo()
+        
+        # In competitive modes, also undo AI move
+        if self.mode == 'AI Duel' and self.ai_agent:
+            if player_undone:  # Only undo AI if player undo was successful
+                ai_undone = self.ai_agent.undo()
+                # If AI undo happened, it's still AI's turn (synchronized undo)
+                # Actually, let's keep it as player's turn since player initiated undo
+                # self.turn = 'player'  # Player goes again after undo
+        
+        return player_undone
+
+    def update_discovered_cells(self):
+        """Update discovered cells for player and AI based on visibility radius"""
+        if not self.fog_of_war_enabled:
+            return
+        
+        # Update player discovered cells
+        if self.player:
+            player_pos = self.player.get_position()
+            for y in range(self.maze.height):
+                for x in range(self.maze.width):
+                    distance = abs(x - player_pos[0]) + abs(y - player_pos[1])
+                    if distance <= self.player_visibility_radius:
+                        self.player_discovered_cells.add((x, y))
+        
+        # Update AI discovered cells
+        if self.ai_agent:
+            ai_pos = self.ai_agent.get_position()
+            for y in range(self.maze.height):
+                for x in range(self.maze.width):
+                    distance = abs(x - ai_pos[0]) + abs(y - ai_pos[1])
+                    if distance <= self.ai_visibility_radius:
+                        self.ai_discovered_cells.add((x, y))
+    
+    def get_player_visible_cells(self):
+        """Get cells currently visible to player"""
+        if not self.fog_of_war_enabled or not self.player:
+            return None
+        return self.player_discovered_cells
+    
+    def increase_player_visibility(self, amount=1):
+        """Increase player visibility radius (from rewards)"""
+        if self.fog_of_war_enabled:
+            self.player_visibility_radius += amount
+            # Re-discover cells with new radius
+            self.update_discovered_cells()
 
