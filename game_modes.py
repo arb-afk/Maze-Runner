@@ -1,60 +1,158 @@
 """
 Game modes manager
 Handles different game modes: Explore, Dynamic, Multi-Goal, AI Duel
+
+This file contains the GameState class which manages:
+- Different game modes (Explore, Obstacle Course, Multi-Goal, AI Duel, Blind Duel)
+- Game state (maze, player, AI, win/lose conditions)
+- Turn-based gameplay (for AI Duel modes)
+- Fog of war (for Blind Duel mode)
+- Algorithm selection and comparison
+- Hint system
+- Win/lose condition checking
 """
 
-import random
-from maze import Maze
-from player import Player, AIAgent
-from pathfinding import Pathfinder
-from config import *
+import random  # For random checkpoint placement, obstacle changes
+from maze import Maze  # Import maze class
+from player import Player, AIAgent  # Import player and AI classes
+from pathfinding import Pathfinder  # Import pathfinding algorithms
+from config import *  # Import all configuration constants
 
 class GameState:
+    """
+    Manages the current game state.
+    
+    This class is the central coordinator for a game session. It:
+    - Creates and manages the maze, player, and AI
+    - Handles different game modes
+    - Tracks game progress (checkpoints, energy, etc.)
+    - Checks win/lose conditions
+    - Manages turn-based gameplay
+    - Handles fog of war
+    """
+    
     def __init__(self, mode='Explore', selected_ai_algorithm=None):
-        self.mode = mode
-        self.maze = None
-        self.player = None
-        self.ai_agent = None
-        self.ai_pathfinder = None
-        self.game_over = False
-        self.winner = None
-        self.message = ""
-        self.turn = 'player'  # 'player' or 'ai' for turn-based mode
-        self.algorithm_comparison = False
-        self.show_hints = False  # Toggle for hint system
-        self.algorithm_results_cache = None  # Cache for algorithm comparison
-        self.selected_algorithm = AI_ALGORITHM  # Currently selected algorithm
-        self.show_exploration = False  # Toggle for showing AI exploration visualization (OFF by default)
+        """
+        Initialize a new game state.
         
-        # Fog of war for Blind Duel mode
-        self.fog_of_war_enabled = (mode == 'Blind Duel')
-        self.player_visibility_radius = 2  # Player sees 2 blocks (can increase with rewards)
-        self.ai_visibility_radius = 1  # AI sees only 1 block
-        self.player_discovered_cells = set()  # Cells player has seen
-        self.ai_discovered_cells = set()  # Cells AI has seen
+        Args:
+            mode: Game mode ('Explore', 'Obstacle Course', 'Multi-Goal', 'AI Duel', 'Blind Duel')
+            selected_ai_algorithm: Optional algorithm for AI (usually auto-selected)
+        """
+        # ====================================================================
+        # GAME MODE
+        # ====================================================================
+        self.mode = mode  # Current game mode
         
+        # ====================================================================
+        # GAME OBJECTS
+        # ====================================================================
+        self.maze = None        # The maze (will be created in initialize_game())
+        self.player = None      # The human player (will be created in initialize_game())
+        self.ai_agent = None   # The AI opponent (created for some modes)
+        self.ai_pathfinder = None  # Pathfinder for AI (contains algorithms)
+        
+        # ====================================================================
+        # GAME STATUS
+        # ====================================================================
+        self.game_over = False  # Whether the game has ended
+        self.winner = None      # 'Player', 'AI', or None (if game not over or draw)
+        self.message = ""       # Message to display when game ends
+        
+        # ====================================================================
+        # TURN-BASED GAMEPLAY
+        # ====================================================================
+        self.turn = 'player'  # Whose turn it is: 'player' or 'ai'
+                            # Only used in turn-based modes (AI Duel, Blind Duel)
+        
+        # ====================================================================
+        # UI FEATURES
+        # ====================================================================
+        self.algorithm_comparison = False  # Whether algorithm comparison panel is visible
+        self.show_hints = False           # Whether hints are shown (H key toggles)
+        self.show_exploration = False     # Whether AI exploration visualization is shown (V key toggles)
+        
+        # ====================================================================
+        # ALGORITHM SELECTION
+        # ====================================================================
+        self.algorithm_results_cache = None  # Cached results from algorithm comparison
+                                            # Avoids recalculating every frame
+        self.selected_algorithm = AI_ALGORITHM  # Currently selected algorithm (can be cycled with [ ])
+        
+        # ====================================================================
+        # FOG OF WAR (Blind Duel Mode)
+        # ====================================================================
+        # Fog of war limits visibility - you can only see nearby cells
+        self.fog_of_war_enabled = (mode == 'Blind Duel')  # Only enabled in Blind Duel mode
+        
+        # Visibility radius in cells (how far you can see)
+        self.player_visibility_radius = 2  # Player sees 2 cells in each direction
+        self.ai_visibility_radius = 1      # AI sees only 1 cell (harder for AI)
+        
+        # Track which cells have been discovered (seen before)
+        self.player_discovered_cells = set()  # Cells the player has seen
+        self.ai_discovered_cells = set()      # Cells the AI has seen
+        
+        # ====================================================================
+        # ALGORITHM SELECTION FOR SPECIAL MODES
+        # ====================================================================
         # For Blind Duel: always use modified A* (no selection needed)
+        # Modified A* handles fog of war with memory and exploration
         if mode == 'Blind Duel':
             self.selected_algorithm = 'MODIFIED_ASTAR_FOG'
         
+        # ====================================================================
+        # INITIALIZE THE GAME
+        # ====================================================================
+        # Create maze, player, AI, checkpoints, obstacles, etc.
         self.initialize_game()
     
     def initialize_game(self):
-        """Initialize game based on current mode"""
+        """
+        Initialize a new game based on the current mode.
+        
+        This function:
+        1. Creates a new maze
+        2. Creates the player
+        3. Sets up mode-specific features (checkpoints, obstacles, AI, etc.)
+        4. Spawns obstacles and rewards
+        5. Initializes fog of war (if enabled)
+        6. Computes AI's initial path
+        
+        Called when starting a new game or resetting.
+        """
+        # ====================================================================
+        # CLEAR PREVIOUS GAME STATE
+        # ====================================================================
         # Clear victory screen cache for new game
         self.victory_screen_cache = None
         
-        # Create maze
+        # ====================================================================
+        # CREATE MAZE
+        # ====================================================================
+        # Generate a new perfect maze with specified dimensions
         self.maze = Maze(MAZE_WIDTH, MAZE_HEIGHT)
         
-        # Assign basic terrain (will be overridden by Dynamic mode)
+        # Assign basic terrain types (grass, water, mud)
+        # include_obstacles=False means no obstacles yet (will be added by mode setup)
         self.maze.assign_terrain(include_obstacles=False)
         
-        # Create player
+        # ====================================================================
+        # CREATE PLAYER
+        # ====================================================================
+        # Create the human player at the start position
         if self.maze.start_pos:
             self.player = Player(self.maze, self.maze.start_pos)
         
-        # Setup based on mode
+        # ====================================================================
+        # MODE-SPECIFIC SETUP
+        # ====================================================================
+        # Each mode has different features:
+        # - Explore: Simple static maze
+        # - Obstacle Course: Obstacles with different costs
+        # - Multi-Goal: Checkpoints that must be visited
+        # - AI Duel: Competitive mode with AI opponent and checkpoints
+        # - Blind Duel: Fog of war mode with limited visibility
         if self.mode == 'Explore':
             self.setup_explore_mode()
         elif self.mode == 'Obstacle Course':
@@ -66,51 +164,75 @@ class GameState:
         elif self.mode == 'Blind Duel':
             self.setup_blind_duel_mode()
         
-        # Spawn initial lava obstacles in all modes (even Obstacle Course)
-        # Lower spawn rate to avoid blocking paths, spawn_initial_lava_obstacles ensures path exists
-        # Use lower spawn rate for better gameplay
-        self.maze.spawn_initial_lava_obstacles(spawn_rate=0.04)  # Reduced from 0.08
+        # ====================================================================
+        # SPAWN OBSTACLES AND REWARDS
+        # ====================================================================
+        # Spawn initial lava obstacles in all modes
+        # Lava obstacles are impassable (block paths)
+        # Lower spawn rate (0.04 = 4%) to avoid blocking too many paths
+        # The spawn function ensures at least one path to goal exists
+        self.maze.spawn_initial_lava_obstacles(spawn_rate=0.04)
         
         # Spawn reward cells in ALL game modes
+        # Rewards give temporary cost reduction bonuses
         from config import REWARD_SPAWN_RATE
         self.maze.spawn_reward_cells(spawn_rate=REWARD_SPAWN_RATE)
         
-        # Initialize fog of war discovered cells (for Blind Duel mode)
+        # ====================================================================
+        # INITIALIZE FOG OF WAR (Blind Duel Mode)
+        # ====================================================================
+        # In Blind Duel mode, visibility is limited
+        # We need to mark the starting area as discovered
         if self.fog_of_war_enabled and self.player:
+            # Update discovered cells based on visibility radius
             self.update_discovered_cells()
+            
             # Initialize AI memory map with starting position
+            # The AI remembers what it has seen
             if self.ai_agent:
                 start_terrain = self.maze.terrain.get(self.maze.start_pos, 'GRASS')
                 self.ai_agent.memory_map[self.maze.start_pos] = start_terrain
                 self.ai_agent.recent_positions.append(self.maze.start_pos)
         
-        # Compute AI's initial path
+        # ====================================================================
+        # COMPUTE AI'S INITIAL PATH
+        # ====================================================================
+        # The AI needs to calculate its path to the goal
+        # Different modes use different algorithms
         if self.ai_agent:
             # For Blind Duel mode, AI can only see discovered cells
-            # For other modes, use None (full visibility)
+            # For other modes, use None (full visibility - AI can see everything)
             discovered_cells_for_ai = self.ai_discovered_cells if self.fog_of_war_enabled else None
             
             if self.mode == 'Multi-Goal':
-                # Multi-Goal has checkpoints - use MULTI_OBJECTIVE
+                # Multi-Goal mode has checkpoints - must use MULTI_OBJECTIVE algorithm
                 if self.maze.goal_pos:
                     if self.maze.checkpoints:
+                        # Multiple goals: all checkpoints + final goal
                         goals = self.maze.checkpoints + [self.maze.goal_pos]
                         self.ai_agent.compute_path(goals, algorithm='MULTI_OBJECTIVE', discovered_cells=None)
                     else:
+                        # No checkpoints - use regular algorithm
                         self.ai_agent.compute_path(self.maze.goal_pos, algorithm=self.selected_algorithm, discovered_cells=None)
+                        
             elif self.mode == 'AI Duel':
-                # AI Duel now has checkpoints - use MULTI_OBJECTIVE
+                # AI Duel mode also has checkpoints - use MULTI_OBJECTIVE
                 if self.maze.goal_pos:
                     if self.maze.checkpoints:
                         goals = self.maze.checkpoints + [self.maze.goal_pos]
                         self.ai_agent.compute_path(goals, algorithm='MULTI_OBJECTIVE', discovered_cells=None)
                     else:
                         self.ai_agent.compute_path(self.maze.goal_pos, algorithm=self.selected_algorithm, discovered_cells=None)
+                        
             elif self.mode == 'Blind Duel':
-                # Blind Duel: no checkpoints, use modified A* for fog of war
+                # Blind Duel: no checkpoints, but has fog of war
+                # Use modified A* that handles limited visibility
                 if self.maze.goal_pos:
                     self.ai_agent.compute_path(self.maze.goal_pos, algorithm='MODIFIED_ASTAR_FOG', discovered_cells=discovered_cells_for_ai)
         
+        # ====================================================================
+        # RESET GAME STATUS
+        # ====================================================================
         self.game_over = False
         self.winner = None
         self.message = ""

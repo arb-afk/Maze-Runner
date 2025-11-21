@@ -1,122 +1,252 @@
 """
 Maze generation and management system
 Generates perfect mazes with walls and paths
+
+This file contains the Maze class which:
+- Generates perfect mazes using recursive backtracking algorithm
+- Manages terrain assignment (grass, water, mud, obstacles)
+- Handles dynamic obstacles (Obstacle Course mode)
+- Spawns rewards and obstacles
+- Validates path existence
+- Renders the maze to the screen
+
+A "perfect maze" means there is exactly one path between any two cells.
+This ensures the maze is solvable and interesting.
 """
 
-import random
-import pygame
-from config import *
+import random  # For random maze generation and terrain assignment
+import pygame  # For drawing the maze to the screen
+from config import *  # Import all configuration constants
 
 class Maze:
+    """
+    Represents the game maze.
+    
+    The maze is a grid of cells, where each cell is either:
+    - A wall (impassable, dark gray)
+    - A path (passable, can have different terrain types)
+    
+    The maze is generated using recursive backtracking, which creates
+    a "perfect maze" - exactly one path between any two cells.
+    """
+    
     def __init__(self, width, height, seed=None):
-        # Use odd dimensions for proper maze generation
-        self.width = width if width % 2 == 1 else width - 1
-        self.height = height if height % 2 == 1 else height - 1
-        # Walls: 0 = wall, 1 = path. Store as 2D grid of cell states
-        # Also track which walls are open (north, east, south, west)
-        self.cells = [[1 for _ in range(self.width)] for _ in range(self.height)]  # 1 = path, 0 = wall
-        self.walls = {}  # (x, y, direction) -> True if open, False if wall
-        self.start_pos = None
-        self.goal_pos = None
-        self.checkpoints = []
-        self.dynamic_obstacles = set()  # Track lava obstacles (used in Multi-Goal and AI Duel modes)
-        self.terrain = {}  # Map (x, y) -> terrain type for path cells (GRASS, WATER, MUD, SPIKES, etc.)
+        """
+        Initialize a new maze.
         
-        # Deterministic dynamic obstacles system
+        Args:
+            width: Desired width of the maze (will be adjusted to odd number)
+            height: Desired height of the maze (will be adjusted to odd number)
+            seed: Optional random seed for reproducible maze generation
+        """
+        # ====================================================================
+        # MAZE DIMENSIONS
+        # ====================================================================
+        # The recursive backtracking algorithm requires ODD dimensions
+        # This is because it works on a grid where walls and paths alternate
+        # If even dimensions are provided, we adjust them to be odd
+        self.width = width if width % 2 == 1 else width - 1   # Ensure odd width
+        self.height = height if height % 2 == 1 else height - 1  # Ensure odd height
+        
+        # ====================================================================
+        # MAZE DATA STRUCTURES
+        # ====================================================================
+        # cells: 2D grid representing the maze
+        #   0 = wall (impassable)
+        #   1 = path (passable)
+        # Initially all cells are paths, will be set to walls during generation
+        self.cells = [[1 for _ in range(self.width)] for _ in range(self.height)]
+        
+        # walls: Dictionary tracking which walls are open (passable) or closed
+        # Key: (x, y, direction) where direction is 'N', 'E', 'S', 'W'
+        # Value: True if wall is open (can pass through), False if closed (wall)
+        self.walls = {}
+        
+        # ====================================================================
+        # SPECIAL POSITIONS
+        # ====================================================================
+        self.start_pos = None   # Starting position (outside left edge of maze)
+        self.goal_pos = None    # Goal position (outside right edge of maze)
+        self.checkpoints = []   # List of checkpoint positions (for Multi-Goal mode)
+        
+        # ====================================================================
+        # OBSTACLES AND TERRAIN
+        # ====================================================================
+        # dynamic_obstacles: Set of (x, y) positions that are lava obstacles
+        # Lava obstacles are impassable (converted from paths to walls)
+        # Used in Multi-Goal and AI Duel modes
+        self.dynamic_obstacles = set()
+        
+        # terrain: Dictionary mapping (x, y) -> terrain type
+        # Terrain types: 'GRASS', 'WATER', 'MUD', 'SPIKES', 'THORNS', 'QUICKSAND', 'ROCKS', 'REWARD'
+        # Each terrain type has a different movement cost
+        self.terrain = {}
+        
+        # ====================================================================
+        # DETERMINISTIC OBSTACLE SYSTEM (Obstacle Course Mode)
+        # ====================================================================
+        # In Obstacle Course mode, obstacles change deterministically each turn
+        # This allows the AI to predict future obstacle states
+        
+        # Random seed for obstacle generation (allows reproducible obstacle changes)
         self.obstacle_seed = seed if seed is not None else random.randint(0, 999999)
-        self.obstacle_rng = random.Random(self.obstacle_seed)  # Separate RNG for obstacles
-        self.turn_number = 0  # Track turn for deterministic changes
         
+        # Separate random number generator for obstacles (seeded for determinism)
+        # This ensures the same obstacle changes happen on the same turn number
+        self.obstacle_rng = random.Random(self.obstacle_seed)
+        
+        # Track current turn number (increments each turn in Obstacle Course mode)
+        # Used to determine which obstacle configuration to use
+        self.turn_number = 0
+        
+        # ====================================================================
+        # GENERATE THE MAZE
+        # ====================================================================
+        # Call the maze generation algorithm
         self.initialize_maze()
     
     def initialize_maze(self):
-        """Generate a perfect maze using recursive backtracking"""
-        # Start with all walls
+        """
+        Generate a perfect maze using the recursive backtracking algorithm.
+        
+        This algorithm creates a "perfect maze" - exactly one path between any two cells.
+        It works by:
+        1. Starting with all cells as walls
+        2. Carving out paths by removing walls
+        3. Using a stack to backtrack when stuck
+        4. Ensuring all cells are reachable
+        
+        The algorithm is guaranteed to create a solvable maze with no loops.
+        """
+        # ====================================================================
+        # INITIALIZATION
+        # ====================================================================
+        # Start with all cells as walls (0 = wall)
         self.cells = [[0 for _ in range(self.width)] for _ in range(self.height)]
-        self.walls = {}
+        self.walls = {}  # Clear wall tracking
         self.dynamic_obstacles.clear()  # Clear any existing obstacles
         self.terrain = {}  # Reset terrain
         
-        # Initialize all walls as closed
+        # Initialize all walls as closed (cannot pass through)
+        # For each cell, mark all four walls (North, East, South, West) as closed
         for y in range(self.height):
             for x in range(self.width):
                 for direction in ['N', 'E', 'S', 'W']:
-                    self.walls[(x, y, direction)] = False
+                    self.walls[(x, y, direction)] = False  # Wall is closed
         
-        # Generate maze using recursive backtracking
-        stack = []
-        visited = set()
+        # ====================================================================
+        # RECURSIVE BACKTRACKING ALGORITHM
+        # ====================================================================
+        # This is the core maze generation algorithm
         
-        # Start at (1, 1) - must be odd coordinates
+        stack = []      # Stack to track the path we're carving (for backtracking)
+        visited = set() # Set of cells we've already visited (to avoid revisiting)
+        
+        # Start at (1, 1) - must be odd coordinates for the algorithm to work
+        # The algorithm works on a grid where we skip every other cell
         start_x, start_y = 1, 1
-        stack.append((start_x, start_y))
-        visited.add((start_x, start_y))
-        self.cells[start_y][start_x] = 1
+        stack.append((start_x, start_y))  # Add starting cell to stack
+        visited.add((start_x, start_y))   # Mark as visited
+        self.cells[start_y][start_x] = 1  # Make it a path (not a wall)
         
+        # Directions for moving to neighbors (we move 2 cells at a time)
+        # This creates the alternating wall/path pattern
         directions = {
-            'N': (0, -2),
-            'E': (2, 0),
-            'S': (0, 2),
-            'W': (-2, 0)
+            'N': (0, -2),  # North: move up 2 cells
+            'E': (2, 0),   # East: move right 2 cells
+            'S': (0, 2),   # South: move down 2 cells
+            'W': (-2, 0)   # West: move left 2 cells
         }
         
+        # Main algorithm loop: continue until stack is empty (all cells processed)
         while stack:
+            # Get current cell (top of stack)
             current_x, current_y = stack[-1]
             
-            # Find unvisited neighbors
+            # ================================================================
+            # FIND UNVISITED NEIGHBORS
+            # ================================================================
+            # Look for neighbors that haven't been visited yet
             neighbors = []
             for direction, (dx, dy) in directions.items():
-                nx, ny = current_x + dx, current_y + dy
+                nx, ny = current_x + dx, current_y + dy  # Calculate neighbor position
+                # Check if neighbor is valid (within bounds) and unvisited
                 if (self.is_valid(nx, ny) and (nx, ny) not in visited):
                     neighbors.append((nx, ny, direction))
             
+            # ================================================================
+            # CARVE PATH TO NEIGHBOR
+            # ================================================================
             if neighbors:
-                # Choose random neighbor
+                # Found unvisited neighbors - choose one randomly
                 next_x, next_y, direction = random.choice(neighbors)
                 
-                # Remove wall between current and next
-                wall_x, wall_y = current_x + directions[direction][0] // 2, current_y + directions[direction][1] // 2
-                self.cells[wall_y][wall_x] = 1
-                self.cells[next_y][next_x] = 1
+                # Remove the wall between current cell and next cell
+                # The wall is halfway between them (1 cell away in the direction)
+                wall_x = current_x + directions[direction][0] // 2  # Wall x position
+                wall_y = current_y + directions[direction][1] // 2   # Wall y position
                 
-                # Mark walls as open
-                if direction == 'N':
-                    self.walls[(current_x, current_y, 'N')] = True
-                    self.walls[(next_x, next_y, 'S')] = True
-                elif direction == 'E':
-                    self.walls[(current_x, current_y, 'E')] = True
-                    self.walls[(next_x, next_y, 'W')] = True
-                elif direction == 'S':
-                    self.walls[(current_x, current_y, 'S')] = True
-                    self.walls[(next_x, next_y, 'N')] = True
-                elif direction == 'W':
-                    self.walls[(current_x, current_y, 'W')] = True
-                    self.walls[(next_x, next_y, 'E')] = True
+                # Make the wall cell and the next cell into paths
+                self.cells[wall_y][wall_x] = 1  # Remove wall (make it a path)
+                self.cells[next_y][next_x] = 1  # Make next cell a path
                 
+                # ============================================================
+                # MARK WALLS AS OPEN
+                # ============================================================
+                # Mark the walls between current and next as open (can pass through)
+                if direction == 'N':  # Moving North
+                    self.walls[(current_x, current_y, 'N')] = True  # Open north wall of current
+                    self.walls[(next_x, next_y, 'S')] = True        # Open south wall of next
+                elif direction == 'E':  # Moving East
+                    self.walls[(current_x, current_y, 'E')] = True  # Open east wall of current
+                    self.walls[(next_x, next_y, 'W')] = True        # Open west wall of next
+                elif direction == 'S':  # Moving South
+                    self.walls[(current_x, current_y, 'S')] = True  # Open south wall of current
+                    self.walls[(next_x, next_y, 'N')] = True        # Open north wall of next
+                elif direction == 'W':  # Moving West
+                    self.walls[(current_x, current_y, 'W')] = True  # Open west wall of current
+                    self.walls[(next_x, next_y, 'E')] = True        # Open east wall of next
+                
+                # Mark next cell as visited and add to stack
                 visited.add((next_x, next_y))
-                stack.append((next_x, next_y))
+                stack.append((next_x, next_y))  # Continue from this cell
+            
+            # ================================================================
+            # BACKTRACK
+            # ================================================================
             else:
-                stack.pop()
+                # No unvisited neighbors - backtrack to previous cell
+                # This is the "recursive backtracking" part
+                stack.pop()  # Remove current cell from stack (go back)
         
-        # Set start and goal positions - outside the maze on left and right edges
-        # Start is outside left edge, goal is outside right edge
-        # Use -1 for start (outside) and width for goal (outside)
-        self.start_pos = (-1, self.height // 2)  # Left side, middle
-        self.goal_pos = (self.width, self.height // 2)  # Right side, middle
+        # ====================================================================
+        # SET START AND GOAL POSITIONS
+        # ====================================================================
+        # Start and goal are placed OUTSIDE the maze for visual clarity
+        # Start is on the left side (outside), goal is on the right side (outside)
         
-        # Ensure the entry and exit cells (adjacent to start/goal) are paths
-        # Entry cell (where player enters maze from start)
+        # Start position: x = -1 (outside left edge), y = middle of maze
+        self.start_pos = (-1, self.height // 2)
+        
+        # Goal position: x = width (outside right edge), y = middle of maze
+        self.goal_pos = (self.width, self.height // 2)
+        
+        # ====================================================================
+        # ENSURE ENTRY AND EXIT POINTS
+        # ====================================================================
+        # We need to make sure the player can enter and exit the maze
+        # Entry cell: where player enters from start (leftmost column, middle row)
         entry_x, entry_y = 0, self.height // 2
         if self.is_valid(entry_x, entry_y):
-            self.cells[entry_y][entry_x] = 1
-            # Open the west wall of the entry cell
+            self.cells[entry_y][entry_x] = 1  # Make entry cell a path
+            # Open the west wall so player can enter from start (outside)
             self.walls[(entry_x, entry_y, 'W')] = True
         
-        # Exit cell (where player exits maze to goal)
+        # Exit cell: where player exits to goal (rightmost column, middle row)
         exit_x, exit_y = self.width - 1, self.height // 2
         if self.is_valid(exit_x, exit_y):
-            self.cells[exit_y][exit_x] = 1
-            # Open the east wall of the exit cell
+            self.cells[exit_y][exit_x] = 1  # Make exit cell a path
+            # Open the east wall so player can exit to goal (outside)
             self.walls[(exit_x, exit_y, 'E')] = True
         
         # Note: Terrain assignment is done in game mode setup
@@ -127,19 +257,56 @@ class Maze:
         # See spawn_initial_lava_obstacles() which should be called after maze setup
     
     def is_valid(self, x, y):
-        """Check if coordinates are within bounds (or start/goal positions outside)"""
+        """
+        Check if coordinates are within valid bounds.
+        
+        Valid positions include:
+        - Cells within the maze (0 <= x < width, 0 <= y < height)
+        - Start position (outside left edge)
+        - Goal position (outside right edge)
+        
+        Args:
+            x: X coordinate
+            y: Y coordinate
+        
+        Returns:
+            True if coordinates are valid, False otherwise
+        """
         # Allow start and goal positions which are outside the maze bounds
+        # Start is at x=-1, goal is at x=width (both are outside)
         if (x, y) == self.start_pos or (x, y) == self.goal_pos:
             return True
+        
+        # Check if coordinates are within maze bounds
+        # x must be 0 to width-1, y must be 0 to height-1
         return 0 <= x < self.width and 0 <= y < self.height
     
     def is_passable(self, x, y):
-        """Check if cell is a path (not a wall)"""
+        """
+        Check if a cell is passable (can be walked through).
+        
+        A cell is passable if:
+        - It's a path (not a wall)
+        - It's the start or goal position (always passable)
+        
+        Args:
+            x: X coordinate
+            y: Y coordinate
+        
+        Returns:
+            True if cell is passable, False if it's a wall or invalid
+        """
+        # First check if coordinates are valid
         if not self.is_valid(x, y):
             return False
+        
         # Start and goal positions outside the maze are always passable
         if (x, y) == self.start_pos or (x, y) == self.goal_pos:
             return True
+        
+        # Check if the cell is a path (1) or wall (0)
+        # cells[y][x] == 1 means it's a path (passable)
+        # cells[y][x] == 0 means it's a wall (impassable)
         return self.cells[y][x] == 1
     
     def has_wall(self, x, y, direction):
@@ -246,34 +413,76 @@ class Maze:
         return terrain_types, terrain_weights
     
     def assign_terrain(self, include_obstacles: bool = False):
-        """Assign terrain types to path cells
+        """
+        Assign terrain types to all passable cells in the maze.
+        
+        This function randomly assigns terrain types (grass, water, mud, obstacles)
+        to each path cell. The assignment uses weighted random selection, so:
+        - Grass is most common (70% of cells)
+        - Water is less common (20% of cells)
+        - Mud is rare (10% of cells)
+        - Obstacles are only added if include_obstacles is True
         
         Args:
             include_obstacles: If True, also place static obstacles (spikes, thorns, quicksand, rocks)
                              Used for Obstacle Course mode
+                             Obstacles have different movement costs than basic terrain
         """
         import random
         
+        # Get terrain types and their weights (probabilities)
+        # This determines how likely each terrain type is to spawn
         terrain_types, terrain_weights = self.random_terrain(include_obstacles)
         
+        # Clear existing terrain assignments
         self.terrain = {}
+        
+        # Loop through every cell in the maze
         for y in range(self.height):
             for x in range(self.width):
+                # Only assign terrain to passable cells (not walls)
                 if self.is_passable(x, y):
+                    # Special cells get special terrain types
                     if (x, y) == self.start_pos:
-                        self.terrain[(x, y)] = 'START'
+                        self.terrain[(x, y)] = 'START'  # Start position
                     elif (x, y) == self.goal_pos:
-                        self.terrain[(x, y)] = 'GOAL'
+                        self.terrain[(x, y)] = 'GOAL'  # Goal position
                     elif (x, y) in self.checkpoints:
-                        self.terrain[(x, y)] = 'CHECKPOINT'
+                        self.terrain[(x, y)] = 'CHECKPOINT'  # Checkpoint position
                     else:
+                        # Regular path cell - assign random terrain based on weights
+                        # random.choices() picks a terrain type based on the weights
+                        # Example: If grass has weight 0.7, it has 70% chance of being selected
                         self.terrain[(x, y)] = random.choices(terrain_types, weights=terrain_weights)[0]
     
     def get_cost(self, x, y):
-        """Get movement cost for a cell based on terrain"""
+        """
+        Get the movement cost for a cell based on its terrain type.
+        
+        This is used by pathfinding algorithms to find optimal paths.
+        Different terrain types have different costs:
+        - Grass: 1 (cheap)
+        - Water: 3 (moderate)
+        - Mud: 5 (expensive)
+        - Lava/Wall: infinity (impassable)
+        
+        Args:
+            x: X coordinate
+            y: Y coordinate
+        
+        Returns:
+            Movement cost (energy required to move to this cell)
+            Returns float('inf') if cell is impassable (wall or obstacle)
+        """
+        # If cell is not passable (wall or obstacle), cost is infinite
         if not self.is_passable(x, y):
             return float('inf')
+        
+        # Get terrain type for this cell (default to 'GRASS' if not set)
         terrain = self.terrain.get((x, y), 'GRASS')
+        
+        # Look up cost in TERRAIN_COSTS dictionary (from config.py)
+        # Default to 1 if terrain type not found (shouldn't happen, but safety)
         return TERRAIN_COSTS.get(terrain, 1)
     
     def get_cost_for_terrain(self, terrain):

@@ -1,86 +1,185 @@
 """
 MazeRunner X - Main Game Loop
 The Intelligent Shortest Path Challenge
+
+This is the main entry point for the game. The Game class manages:
+- The game loop (update, draw, handle events)
+- Window initialization
+- User input handling (keyboard, mouse)
+- Game state management (menu vs gameplay)
+- Rendering (drawing everything to screen)
+
+The game follows a standard game loop pattern:
+1. Handle events (user input)
+2. Update game state
+3. Draw everything to screen
+4. Repeat at 60 FPS
 """
 
-import pygame
-import sys
-from config import *
-from game_modes import GameState
-from ui import UI
+# Import required libraries
+import pygame  # Game development library for graphics, input, and game loop
+import sys     # System-specific functions (for exiting the program)
+from config import *        # Import all configuration constants (colors, sizes, etc.)
+from game_modes import GameState  # Import game state manager (handles different game modes)
+from ui import UI           # Import UI renderer (draws menus, stats, etc.)
 
 class Game:
+    """
+    Main game class that controls the entire game.
+    This is like the "director" of the game - it coordinates everything.
+    """
+    
     def __init__(self):
+        """
+        Initialize the game - set up pygame, create window, prepare game state.
+        This is called once when the game starts.
+        """
+        # Initialize pygame - must be called before using any pygame functions
         pygame.init()
+        
+        # Create the game window (screen) with specified width and height
+        # This is where everything will be drawn
         self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+        
+        # Set the window title (shown in the title bar)
         pygame.display.set_caption("MazeRunner X - The Intelligent Shortest Path Challenge")
+        
+        # Create a clock object to control frame rate (FPS)
+        # This ensures the game runs at consistent speed (60 FPS)
         self.clock = pygame.time.Clock()
+        
+        # Flag to control the main game loop
+        # When False, the game will exit
         self.running = True
         
-        # Game states
-        self.in_menu = True  # Start in main menu
-        self.game_state = None
-        self.ui = UI(self.screen)
+        # ====================================================================
+        # GAME STATE VARIABLES
+        # ====================================================================
         
-        # Calculate maze offset to center it and account for start/goal outside maze
-        # Start is at x=-1 (outside left), Goal is at x=width (outside right)
-        # Calculate total width: 1 cell (start) + maze width + 1 cell (goal)
-        total_maze_width = (1 + MAZE_WIDTH + 1) * CELL_SIZE  # start + maze + goal
-        available_width = WINDOW_WIDTH - GRID_PADDING  # Space left of UI panel
-        # Center the total maze area (including start/goal) horizontally
+        self.in_menu = True  # Whether we're currently in the main menu
+                             # True = showing menu, False = playing game
+                             
+        self.game_state = None  # Current game state (None when in menu)
+                               # Contains: maze, player, AI, game mode, etc.
+                               # Created when a game mode is selected
+                               
+        self.ui = UI(self.screen)  # UI renderer - handles drawing menus, stats, etc.
+        
+        # ====================================================================
+        # MAZE POSITIONING CALCULATIONS
+        # ====================================================================
+        # We need to calculate where to draw the maze on screen
+        # The maze needs to be centered, and we need space for the UI panel on the right
+        
+        # Calculate total width needed for the maze (including start and goal positions)
+        # Start is at x=-1 (outside left edge), Goal is at x=width (outside right edge)
+        # So we need: 1 cell (start) + maze width + 1 cell (goal)
+        total_maze_width = (1 + MAZE_WIDTH + 1) * CELL_SIZE  # Total pixels needed
+        
+        # Calculate available width (window width minus space for UI panel on right)
+        available_width = WINDOW_WIDTH - GRID_PADDING
+        
+        # Center the maze horizontally in the available space
+        # max(20, ...) ensures at least 20 pixels margin on the left
         self.maze_offset_x = max(20, (available_width - total_maze_width) // 2)
-        # Small top padding for labels
+        
+        # Vertical offset - small padding from top for labels/titles
         self.maze_offset_y = 80
         
-        # Split-screen offsets for AI Duel modes
+        # Calculate split-screen positioning for AI Duel modes
+        # In duel modes, we show two mazes (one for player, one for AI)
         self.calculate_split_screen_offsets()
     
     def handle_events(self):
-        """Handle user input events"""
+        """
+        Handle all user input events (keyboard, mouse, window close, etc.)
+        
+        This method is called every frame to check for user input.
+        Pygame collects all events (key presses, mouse clicks, etc.) and we process them here.
+        """
+        # Get all events that happened since last frame
+        # Events include: key presses, mouse clicks, window close, etc.
         for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                self.running = False
             
+            # ====================================================================
+            # WINDOW CLOSE EVENT
+            # ====================================================================
+            # User clicked the X button to close the window
+            if event.type == pygame.QUIT:
+                self.running = False  # Set flag to exit game loop
+            
+            # ====================================================================
+            # MOUSE WHEEL SCROLLING (for split-screen modes)
+            # ====================================================================
             elif event.type == pygame.MOUSEWHEEL:
-                # Mouse wheel scrolling for split-screen view
+                # Mouse wheel scrolling for split-screen view in AI Duel modes
+                # In duel modes, the mazes might be taller than the screen, so we allow scrolling
                 duel_modes = ['AI Duel', 'Blind Duel']
+                
+                # Only handle scrolling if we're in a duel mode (not in menu)
                 if not self.in_menu and self.game_state and self.game_state.mode in duel_modes:
                     # event.y is positive when scrolling up, negative when scrolling down
+                    # Multiply by 30 pixels for smooth scrolling
                     scroll_amount = event.y * 30
+                    
+                    # Update scroll offset, but clamp it between 0 and max_scroll
+                    # max(0, ...) prevents scrolling above the top
+                    # min(..., self.max_scroll) prevents scrolling below the bottom
                     self.scroll_offset = max(0, min(self.max_scroll, self.scroll_offset - scroll_amount))
+                    
+                    # Recalculate maze positions based on new scroll offset
                     self.calculate_split_screen_offsets()
             
+            # ====================================================================
+            # MOUSE BUTTON CLICKS
+            # ====================================================================
             elif event.type == pygame.MOUSEBUTTONDOWN:
-                # Mouse wheel button scrolling (fallback for older pygame versions)
+                # Handle mouse button clicks (including mouse wheel buttons for older pygame)
                 duel_modes = ['AI Duel', 'Blind Duel']
+                
+                # Mouse wheel button scrolling (fallback for older pygame versions)
+                # Some systems don't support MOUSEWHEEL event, so we check button 4 and 5
                 if not self.in_menu and self.game_state and self.game_state.mode in duel_modes:
-                    if event.button == 4:  # Scroll up
+                    if event.button == 4:  # Mouse wheel scroll up
                         self.scroll_offset = max(0, self.scroll_offset - 30)
                         self.calculate_split_screen_offsets()
-                    elif event.button == 5:  # Scroll down
+                    elif event.button == 5:  # Mouse wheel scroll down
                         self.scroll_offset = min(self.max_scroll, self.scroll_offset + 30)
                         self.calculate_split_screen_offsets()
                 
-                # Mouse click handling
-                elif event.button == 1:  # Left click
+                # Left mouse button click (button 1)
+                elif event.button == 1:
+                    # If we're in the menu, check if user clicked on a mode button
                     if self.in_menu:
+                        # Check which mode button was clicked (if any)
                         clicked_mode = self.ui.get_clicked_mode(event.pos)
+                        
                         if clicked_mode:
-                            # Map key to mode name
+                            # Map the clicked button key to the actual mode name
+                            # The UI returns '1', '2', etc., we need to convert to mode names
                             mode_map = {
-                                '1': 'Explore',
-                                '2': 'Obstacle Course',
-                                '3': 'Multi-Goal',
-                                '4': 'AI Duel',
-                                '5': 'Blind Duel'
+                                '1': 'Explore',        # Mode 1: Simple exploration
+                                '2': 'Obstacle Course', # Mode 2: Obstacles with costs
+                                '3': 'Multi-Goal',     # Mode 3: Multiple checkpoints
+                                '4': 'AI Duel',        # Mode 4: Race against AI
+                                '5': 'Blind Duel'      # Mode 5: Fog of war duel
                             }
+                            
                             if clicked_mode in mode_map:
-                                # Blind Duel mode now uses modified A* directly (no selection needed)
+                                # Start the selected game mode
                                 self.start_game(mode_map[clicked_mode])
             
+            # ====================================================================
+            # KEYBOARD INPUT HANDLING
+            # ====================================================================
             elif event.type == pygame.KEYDOWN:
-                # Menu handling (keep keyboard support)
+                # A key was pressed down (not released)
+                
+                # ====================================================================
+                # MENU CONTROLS (when in main menu)
+                # ====================================================================
                 if self.in_menu:
+                    # Number keys 1-5 select game modes from the menu
                     if event.key == pygame.K_1:
                         self.start_game('Explore')
                     elif event.key == pygame.K_2:
@@ -90,45 +189,74 @@ class Game:
                     elif event.key == pygame.K_4:
                         self.start_game('AI Duel')
                     elif event.key == pygame.K_5:
-                        # Blind Duel mode - start directly (uses modified A*)
+                        # Blind Duel mode - start directly (uses modified A* for fog of war)
                         self.start_game('Blind Duel')
                     elif event.key == pygame.K_ESCAPE:
+                        # ESC key quits the game
                         self.running = False
+                    
+                    # Skip the rest of event handling if we're in menu
                     continue
                 
-                # Game controls (only when in game)
+                # ====================================================================
+                # GAME CONTROLS (only when playing, not in menu)
+                # ====================================================================
+                # If there's no active game state, ignore game controls
                 if self.game_state is None:
                     continue
+                
+                # ====================================================================
+                # GAME MANAGEMENT KEYS
+                # ====================================================================
                     
                 if event.key == pygame.K_r:
+                    # R key: Reset current game (restart with same mode and settings)
                     self.game_state.reset()
+                    
                 elif event.key == pygame.K_g:
-                    # Generate new maze
-                    mode = self.game_state.mode
-                    self.game_state = GameState(mode=mode)
+                    # G key: Generate a completely new maze (new game)
+                    mode = self.game_state.mode  # Remember current mode
+                    self.game_state = GameState(mode=mode)  # Create new game state
+                    
                 elif event.key == pygame.K_h:
-                    # Toggle hints
+                    # H key: Toggle hints on/off
+                    # Hints show the AI's suggested next move (golden arrow)
                     self.game_state.toggle_hints()
+                    
                 elif event.key == pygame.K_c:
-                    # Toggle algorithm comparison
+                    # C key: Toggle algorithm comparison dashboard
+                    # Shows side-by-side comparison of different pathfinding algorithms
                     self.game_state.toggle_algorithm_comparison()
+                    
                 elif event.key == pygame.K_u:
-                    # Undo last move
+                    # U key: Undo last move (costs 2 energy)
+                    # Allows player to take back their last move
                     self.game_state.undo_move()
-                elif event.key == pygame.K_LEFTBRACKET:
-                    # Cycle through algorithms backward
+                    
+                elif event.key == pygame.K_LEFTBRACKET:  # [ key
+                    # [ key: Cycle to previous algorithm (backward)
+                    # Changes which algorithm the AI uses for pathfinding
                     self.game_state.cycle_algorithm(forward=False)
-                elif event.key == pygame.K_RIGHTBRACKET:
-                    # Cycle through algorithms forward
+                    
+                elif event.key == pygame.K_RIGHTBRACKET:  # ] key
+                    # ] key: Cycle to next algorithm (forward)
+                    # Changes which algorithm the AI uses for pathfinding
                     self.game_state.cycle_algorithm(forward=True)
+                    
                 elif event.key == pygame.K_v:
-                    # Toggle exploration visualization
+                    # V key: Toggle exploration visualization
+                    # Shows how the AI explores the maze (explored nodes, frontier, path)
                     self.game_state.toggle_exploration_viz()
+                    
                 elif event.key == pygame.K_m:
-                    # Return to menu
+                    # M key: Return to main menu
                     self.in_menu = True
-                    self.game_state = None
-                # Mode selection (in-game quick switch)
+                    self.game_state = None  # Clear current game
+                
+                # ====================================================================
+                # QUICK MODE SWITCHING (in-game)
+                # ====================================================================
+                # Number keys 1-5 can also switch modes while playing
                 elif event.key == pygame.K_1:
                     self.game_state = GameState(mode='Explore')
                 elif event.key == pygame.K_2:
@@ -140,51 +268,94 @@ class Game:
                 elif event.key == pygame.K_5:
                     # Blind Duel mode - start directly (uses modified A*)
                     self.start_game('Blind Duel')
+                    
                 elif event.key == pygame.K_ESCAPE:
+                    # ESC key: Return to menu (same as M key)
                     self.in_menu = True
                     self.game_state = None
-                # Movement controls (only if player's turn in turn-based mode and not in menu)
+                # ====================================================================
+                # PLAYER MOVEMENT CONTROLS
+                # ====================================================================
+                # Arrow keys or WASD to move the player
+                # Only allow movement if:
+                # 1. Not in menu
+                # 2. Game state exists
+                # 3. It's player's turn (in turn-based modes) OR not a duel mode
                 if not self.in_menu and self.game_state:
                     duel_modes = ['AI Duel', 'Blind Duel']
                     is_duel_mode = self.game_state.mode in duel_modes
+                    
+                    # Check if it's the player's turn (or not a turn-based mode)
                     if (self.game_state.turn == 'player' or not is_duel_mode):
-                        player_moved = False
+                        player_moved = False  # Track if movement was successful
+                        
+                        # UP movement: Arrow Up or W key
+                        # move(0, -1) means: move 0 in x direction, -1 in y direction (up)
                         if event.key == pygame.K_UP or event.key == pygame.K_w:
                             player_moved = self.game_state.player.move(0, -1)
+                            
+                        # DOWN movement: Arrow Down or S key
+                        # move(0, 1) means: move 0 in x direction, +1 in y direction (down)
                         elif event.key == pygame.K_DOWN or event.key == pygame.K_s:
                             player_moved = self.game_state.player.move(0, 1)
+                            
+                        # LEFT movement: Arrow Left or A key
+                        # move(-1, 0) means: move -1 in x direction (left), 0 in y direction
                         elif event.key == pygame.K_LEFT or event.key == pygame.K_a:
                             player_moved = self.game_state.player.move(-1, 0)
+                            
+                        # RIGHT movement: Arrow Right or D key
+                        # move(1, 0) means: move +1 in x direction (right), 0 in y direction
                         elif event.key == pygame.K_RIGHT or event.key == pygame.K_d:
                             player_moved = self.game_state.player.move(1, 0)
                         
-                        # If player moved, handle post-move actions
+                        # ====================================================================
+                        # POST-MOVEMENT ACTIONS
+                        # ====================================================================
+                        # If the player successfully moved, we need to do several things:
+                        # 1. Update fog of war (if enabled)
+                        # 2. Update dynamic obstacles (if in Obstacle Course mode)
+                        # 3. Switch turns (if in turn-based duel mode)
                         if player_moved:
                             # Update fog of war discovered cells (for Blind Duel mode)
+                            # Fog of war limits visibility - we need to mark newly visible cells
                             if self.game_state.fog_of_war_enabled:
+                                # Update which cells are now visible based on player's position
                                 self.game_state.update_discovered_cells()
-                                # Check if player collected a reward - increase visibility
+                                
+                                # Check if player collected a reward - rewards increase visibility radius
                                 player_pos = self.game_state.player.get_position()
                                 terrain = self.game_state.maze.terrain.get(player_pos, 'GRASS')
+                                
+                                # If player is on a reward cell and just collected it
                                 if terrain == 'REWARD' and player_pos in self.game_state.player.collected_rewards:
-                                    # Check if this is a newly collected reward (not already processed)
+                                    # Check if we've already applied the visibility bonus for this reward
+                                    # (prevent applying it multiple times)
                                     if not hasattr(self.game_state.player, '_visibility_bonus_applied'):
                                         self.game_state.player._visibility_bonus_applied = set()
+                                    
+                                    # If we haven't applied bonus for this reward yet, increase visibility
                                     if player_pos not in self.game_state.player._visibility_bonus_applied:
-                                        self.game_state.increase_player_visibility(amount=1)
+                                        self.game_state.increase_player_visibility(amount=1)  # Increase radius by 1
                                         self.game_state.player._visibility_bonus_applied.add(player_pos)
                             
                             # Update dynamic obstacles for Obstacle Course mode
+                            # In Obstacle Course mode, obstacles change each turn
                             if self.game_state.mode == 'Obstacle Course':
+                                # Update obstacles based on player's current path
+                                # This ensures obstacles don't block the player's current route
                                 self.game_state.maze.update_dynamic_obstacles(
                                     player_path=self.game_state.player.path,
                                     checkpoints=self.game_state.maze.checkpoints,
                                     reached_checkpoints=self.game_state.player.reached_checkpoints
                                 )
-                                # Clear algorithm comparison cache since graph changed
+                                
+                                # Clear algorithm comparison cache since the maze graph changed
+                                # (obstacles changed, so old pathfinding results are invalid)
                                 self.game_state.algorithm_results_cache = None
                                 
                                 # Recompute AI path after obstacles change
+                                # The AI needs to find a new path because obstacles moved
                                 if self.game_state.ai_agent and self.game_state.maze.goal_pos:
                                     self.game_state.ai_agent.compute_path(
                                         self.game_state.maze.goal_pos, 
@@ -192,44 +363,74 @@ class Game:
                                     )
                             
                             # If player moved in turn-based duel mode, switch to AI turn
+                            # In turn-based modes, players take turns: player moves, then AI moves
                             if is_duel_mode and TURN_BASED:
-                                self.game_state.turn = 'ai'
+                                self.game_state.turn = 'ai'  # Now it's the AI's turn to move
     
     def calculate_split_screen_offsets(self):
-        """Calculate offsets for split-screen view in AI Duel modes (vertical split with scrolling)"""
-        # For split screen, we need to fit two mazes top and bottom
-        # Each maze includes: 1 cell (start) + MAZE_WIDTH + 1 cell (goal)
-        total_cells_width = (1 + MAZE_WIDTH + 1)  # 33 cells wide
+        """
+        Calculate screen positions for split-screen view in AI Duel modes.
         
-        # Use full cell size - we'll scroll instead of shrinking
-        self.split_cell_size = CELL_SIZE  # Full 30 pixels
+        In AI Duel modes, we show two mazes side-by-side (vertically stacked):
+        - Top maze: Shows AI's view and path
+        - Bottom maze: Shows player's view and path
         
-        # Calculate actual maze dimensions
-        actual_maze_width = total_cells_width * self.split_cell_size
-        actual_maze_height = MAZE_HEIGHT * self.split_cell_size
+        This function calculates where to draw each maze on the screen.
+        It also handles scrolling if the mazes are taller than the screen.
+        """
+        # ====================================================================
+        # CALCULATE MAZE DIMENSIONS
+        # ====================================================================
+        # For split screen, we need to fit two mazes (one above the other)
+        # Each maze includes: 1 cell (start outside left) + MAZE_WIDTH + 1 cell (goal outside right)
+        total_cells_width = (1 + MAZE_WIDTH + 1)  # Total cells horizontally (e.g., 33 cells)
         
-        # Center horizontally
+        # Use full cell size - we'll scroll instead of shrinking cells to fit
+        # This keeps the mazes readable
+        self.split_cell_size = CELL_SIZE  # Full 30 pixels per cell
+        
+        # Calculate actual pixel dimensions of the maze
+        actual_maze_width = total_cells_width * self.split_cell_size   # Width in pixels
+        actual_maze_height = MAZE_HEIGHT * self.split_cell_size        # Height in pixels
+        
+        # ====================================================================
+        # HORIZONTAL POSITIONING
+        # ====================================================================
+        # Center the mazes horizontally on the screen
         self.maze_x = (WINDOW_WIDTH - actual_maze_width) // 2
         
-        # Position vertically with spacing
-        header_space = 80  # Space for "AI DUEL" title
-        label_space = 50   # Space for AI/PLAYER labels
-        spacing = 30       # Space between mazes
+        # ====================================================================
+        # VERTICAL POSITIONING AND SPACING
+        # ====================================================================
+        header_space = 80  # Space at top for "AI DUEL" title
+        label_space = 50   # Space for "AI" and "PLAYER" labels
+        spacing = 30       # Space between the two mazes (top and bottom)
         
-        # Scrolling offset (starts at 0)
+        # ====================================================================
+        # SCROLLING SETUP
+        # ====================================================================
+        # If mazes are taller than the screen, we need scrolling
+        # Initialize scroll offset if it doesn't exist (starts at 0 = top)
         if not hasattr(self, 'scroll_offset'):
             self.scroll_offset = 0
         
-        # Total content height (both mazes + spacing)
+        # Calculate total height of all content (both mazes + spacing + labels)
         self.total_content_height = header_space + actual_maze_height + spacing + actual_maze_height + 50
         
-        # Maximum scroll (content height - window height)
+        # Maximum scroll amount (how far we can scroll down)
+        # If content fits on screen, max_scroll = 0 (no scrolling needed)
         self.max_scroll = max(0, self.total_content_height - WINDOW_HEIGHT)
         
-        # Top maze (AI) - affected by scroll
+        # ====================================================================
+        # CALCULATE Y POSITIONS FOR EACH MAZE
+        # ====================================================================
+        # Top maze (AI view) - position affected by scroll offset
+        # When scroll_offset = 0, maze starts at header_space
+        # When scrolling down, scroll_offset increases, maze moves up
         self.top_maze_y = header_space - self.scroll_offset
         
-        # Bottom maze (Player) - affected by scroll
+        # Bottom maze (Player view) - positioned below top maze with spacing
+        # Also affected by scroll offset
         self.bottom_maze_y = header_space + actual_maze_height + spacing - self.scroll_offset
         
         # Debug output
@@ -243,28 +444,54 @@ class Game:
             print(f"  Current scroll offset: {self.scroll_offset}")
     
     def start_game(self, mode, ai_algorithm=None):
-        """Start a new game with the selected mode"""
+        """
+        Start a new game with the selected mode.
+        
+        Args:
+            mode: Game mode to start ('Explore', 'Obstacle Course', 'Multi-Goal', 'AI Duel', 'Blind Duel')
+            ai_algorithm: Optional algorithm for AI (usually auto-selected based on mode)
+        """
+        # Exit menu and enter gameplay
         self.in_menu = False
+        
+        # Create a new game state with the selected mode
+        # GameState will initialize the maze, player, AI, etc.
         self.game_state = GameState(mode=mode, selected_ai_algorithm=ai_algorithm)
-        # Reset cursor to normal arrow
+        
+        # Reset cursor to normal arrow (in case it was a hand cursor from menu)
         pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
-        # Reset scroll offset for split-screen modes
+        
+        # Reset scroll offset for split-screen modes (start at top)
         self.scroll_offset = 0
+        
+        # If this is a duel mode, calculate split-screen positions
         if mode in ['AI Duel', 'Blind Duel']:
             self.calculate_split_screen_offsets()
     
     def update(self, dt, current_time):
-        """Update game logic"""
+        """
+        Update game logic - called every frame.
+        
+        Args:
+            dt: Delta time (time since last frame) in seconds
+            current_time: Current game time in seconds
+        """
+        # If we're in menu or no game state exists, nothing to update
         if self.in_menu or self.game_state is None:
             return
         
+        # Update the game state (maze, player, AI, obstacles, etc.)
         self.game_state.update(dt, current_time)
         
-        # Handle AI turn in turn-based mode
+        # ====================================================================
+        # HANDLE AI TURN IN TURN-BASED MODES
+        # ====================================================================
+        # In turn-based duel modes, the AI moves after the player
         duel_modes = ['AI Duel', 'Blind Duel']
         if self.game_state.mode in duel_modes and TURN_BASED:
+            # If it's the AI's turn and game isn't over, make the AI move
             if self.game_state.turn == 'ai' and not self.game_state.game_over:
-                self.game_state.make_ai_move()
+                self.game_state.make_ai_move()  # AI calculates path and moves one step
     
     def draw(self):
         """Draw everything to screen"""
@@ -825,21 +1052,62 @@ class Game:
         pygame.display.flip()
     
     def run(self):
-        """Main game loop"""
-        current_time = pygame.time.get_ticks() / 1000.0
+        """
+        Main game loop - this is the heart of the game.
         
+        The game loop runs continuously until self.running becomes False.
+        Each iteration:
+        1. Handles user input (keyboard, mouse)
+        2. Updates game state (player movement, AI movement, obstacles, etc.)
+        3. Draws everything to the screen
+        
+        This loop runs at 60 FPS (frames per second) as specified by FPS in config.py
+        """
+        # Initialize current time (used for animations and timing)
+        current_time = pygame.time.get_ticks() / 1000.0  # Convert milliseconds to seconds
+        
+        # ====================================================================
+        # MAIN GAME LOOP
+        # ====================================================================
+        # This loop runs continuously until the game is closed
         while self.running:
+            # Control frame rate - tick() waits to maintain 60 FPS
+            # Returns time since last frame in milliseconds, convert to seconds
             dt = self.clock.tick(FPS) / 1000.0
+            
+            # Update current time for this frame
             current_time = pygame.time.get_ticks() / 1000.0
             
+            # ================================================================
+            # GAME LOOP STEPS (standard pattern for all games)
+            # ================================================================
+            
+            # Step 1: Handle all user input (keyboard, mouse, window events)
             self.handle_events()
+            
+            # Step 2: Update game state (player movement, AI movement, obstacles, etc.)
             self.update(dt, current_time)
+            
+            # Step 3: Draw everything to the screen
             self.draw()
         
-        pygame.quit()
-        sys.exit()
+        # ====================================================================
+        # CLEANUP
+        # ====================================================================
+        # Game loop ended - clean up and exit
+        pygame.quit()  # Close pygame and free resources
+        sys.exit()     # Exit the program
+
+# ============================================================================
+# PROGRAM ENTRY POINT
+# ============================================================================
+# This code only runs when the script is executed directly (not when imported)
+# This is the standard Python pattern for making a script executable
 
 if __name__ == "__main__":
+    # Create a new Game instance (this initializes everything)
     game = Game()
+    
+    # Start the game loop (this runs until the game is closed)
     game.run()
 

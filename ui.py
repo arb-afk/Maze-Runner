@@ -1,31 +1,93 @@
 """
 UI and visualization components
 Handles rendering of stats, exploration visualization, and game interface
+
+This file contains the UI class which is responsible for:
+- Drawing the main menu
+- Rendering the game UI panel (stats, energy, controls)
+- Visualizing algorithm exploration (explored nodes, frontier, path)
+- Showing hints and algorithm comparison
+- Rendering victory/defeat screens
+- Displaying split-screen for AI Duel modes
+
+All visual elements are drawn using pygame drawing functions.
 """
 
-import pygame
-from config import *
+import pygame  # For drawing graphics, text, and UI elements
+from config import *  # Import all configuration constants (colors, sizes, etc.)
 
 class UI:
+    """
+    User Interface renderer.
+    
+    This class handles all visual elements that appear on screen:
+    - Menus, buttons, text
+    - Game statistics and information
+    - Algorithm visualizations
+    - Victory/defeat screens
+    """
+    
     def __init__(self, screen):
-        self.screen = screen
+        """
+        Initialize the UI renderer.
+        
+        Args:
+            screen: The pygame Surface to draw on (the game window)
+        """
+        self.screen = screen  # Reference to the game window (where we draw everything)
+        
+        # ====================================================================
+        # UI PANEL POSITIONING
+        # ====================================================================
+        # The UI panel is on the right side of the screen
+        # It shows stats, energy, controls, etc.
+        
+        # X position of the UI panel (starts at this x coordinate)
         self.ui_panel_x = WINDOW_WIDTH - GRID_PADDING
+        
+        # Width of the UI panel (same as GRID_PADDING from config)
         self.ui_panel_width = GRID_PADDING
+        
+        # Height of the UI panel (full window height)
         self.ui_panel_height = WINDOW_HEIGHT
-        self.menu_buttons = []  # Store button rectangles for click detection
+        
+        # ====================================================================
+        # MENU BUTTON TRACKING
+        # ====================================================================
+        # Store button rectangles for click detection
+        # Each button has: {'rect': pygame.Rect, 'mode': mode_name, 'mode_key': key}
+        # Updated each frame when drawing the menu
+        self.menu_buttons = []
     
     def draw_main_menu(self):
-        """Draw the main menu screen with mode selection"""
-        # Clear button list for this frame
+        """
+        Draw the main menu screen with game mode selection buttons.
+        
+        The main menu displays:
+        - Game title and subtitle
+        - Five mode selection buttons (Explore, Obstacle Course, Multi-Goal, AI Duel, Blind Duel)
+        - Each button shows mode name, description, and number key
+        - Hover effects when mouse is over buttons
+        - Gradient background for visual appeal
+        """
+        # ====================================================================
+        # INITIALIZATION
+        # ====================================================================
+        # Clear button list for this frame (will be repopulated)
         self.menu_buttons = []
         
-        # Get mouse position for hover effects
+        # Get current mouse position for hover effects
         mouse_pos = pygame.mouse.get_pos()
         
-        # Create a gradient background effect
+        # ====================================================================
+        # BACKGROUND GRADIENT
+        # ====================================================================
+        # Create a gradient background effect (darker at top, lighter at bottom)
+        # Draw horizontal lines with gradually changing colors
         for y in range(0, WINDOW_HEIGHT, 4):
-            progress = y / WINDOW_HEIGHT
-            color_value = int(240 - progress * 40)
+            progress = y / WINDOW_HEIGHT  # Progress from 0 (top) to 1 (bottom)
+            color_value = int(240 - progress * 40)  # Darker at top, lighter at bottom
+            # Draw a horizontal line with the calculated color
             pygame.draw.line(self.screen, (color_value, color_value, color_value + 10), 
                            (0, y), (WINDOW_WIDTH, y), 4)
         
