@@ -1,6 +1,6 @@
-# Data Structures Used in MazeRunner X
+# Data Structures Used in MazeRunner
 
-This document provides a comprehensive breakdown of all data structures used throughout the MazeRunner X codebase, organized by category and usage context.
+This document provides a comprehensive breakdown of all data structures used throughout the MazeRunner codebase, organized by category and usage context.
 
 ## Table of Contents
 1. [Built-in Python Data Structures](#built-in-python-data-structures)
@@ -519,7 +519,7 @@ AVAILABLE_ALGORITHMS: List[str] = [
 
 ## Summary
 
-MazeRunner X uses a combination of:
+MazeRunner uses a combination of:
 - **Lists** for ordered sequences (paths, history, checkpoints)
 - **Dictionaries** for key-value mappings (terrain, costs, state tracking)
 - **Sets** for fast membership testing (visited cells, discovered cells)

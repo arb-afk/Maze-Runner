@@ -99,7 +99,7 @@ class UI:
         font_footer = pygame.font.Font(None, 20)
         
         # Main title with shadow
-        title_text = "MazeRunner X"
+        title_text = "MazeRunner"
         title_shadow = font_title.render(title_text, True, (100, 100, 100))
         title = font_title.render(title_text, True, (33, 33, 33))
         title_rect = title.get_rect(center=(WINDOW_WIDTH // 2, 120))
@@ -242,7 +242,7 @@ class UI:
         font_bold = pygame.font.Font(None, FONT_SIZE_MEDIUM + 4)
         
         # Title with gradient effect
-        title = font_title.render("MazeRunner X", True, COLORS['TEXT'])
+        title = font_title.render("MazeRunner", True, COLORS['TEXT'])
         self.screen.blit(title, (self.ui_panel_x + 15, y_offset))
         y_offset += 45
         

@@ -1,8 +1,8 @@
-# MazeRunner X — The Intelligent Shortest Path Challenge
+# MazeRunner — The Intelligent Shortest Path Challenge
 
 ## Title Page
 
-**Project Title:** MazeRunner X — The Intelligent Shortest Path Challenge
+**Project Title:** MazeRunner — The Intelligent Shortest Path Challenge
 
 **Course:** [Course Name]
 
@@ -16,7 +16,7 @@
 
 ## Abstract / Overview
 
-MazeRunner X is an educational puzzle game that combines strategic maze navigation with advanced pathfinding algorithms. The game features dynamically generated perfect mazes with weighted terrain, multiple game modes, and an AI opponent that demonstrates various graph-based pathfinding algorithms including Dijkstra's, A*, Bidirectional A*, and Multi-Objective Search.
+MazeRunner is an educational puzzle game that combines strategic maze navigation with advanced pathfinding algorithms. The game features dynamically generated perfect mazes with weighted terrain, multiple game modes, and an AI opponent that demonstrates various graph-based pathfinding algorithms including Dijkstra's, A*, Bidirectional A*, and Multi-Objective Search.
 
 **Key Learning Outcomes:**
 - Understanding graph-based pathfinding algorithms through interactive visualization
@@ -59,7 +59,7 @@ This project addresses these challenges by providing an interactive, visual plat
 
 ### Gameplay Overview
 
-MazeRunner X is a turn-based and real-time maze navigation game where players must find optimal paths from a start position to a goal while managing energy resources and navigating through varied terrain.
+MazeRunner is a turn-based and real-time maze navigation game where players must find optimal paths from a start position to a goal while managing energy resources and navigating through varied terrain.
 
 ### Core Mechanics
 
@@ -190,7 +190,7 @@ The maze features weighted terrain types that affect movement cost:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    MAZERUNNER X SYSTEM                      │
+│                    MAZERUNNER SYSTEM                        │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -477,7 +477,7 @@ MazeRunner/
 
 ### Graph Algorithm Overview
 
-MazeRunner X implements several graph-based pathfinding algorithms, each optimized for different scenarios. All algorithms operate on a weighted graph where:
+MazeRunner implements several graph-based pathfinding algorithms, each optimized for different scenarios. All algorithms operate on a weighted graph where:
 - **Vertices:** Passable cells in the maze
 - **Edges:** Adjacent cell connections (4-directional)
 - **Edge Weights:** Terrain movement costs
@@ -721,7 +721,7 @@ else:
 ### Main Menu
 
 **Layout:**
-- Centered title: "MazeRunner X"
+- Centered title: "MazeRunner"
 - Subtitle: "The Intelligent Shortest Path Challenge"
 - Five mode selection buttons with:
   - Numbered key indicators (1-5)
@@ -1144,7 +1144,7 @@ else:
 
 ### What Was Achieved
 
-MazeRunner X successfully implements and visualizes multiple graph-based pathfinding algorithms in an interactive game environment. The project demonstrates:
+MazeRunner successfully implements and visualizes multiple graph-based pathfinding algorithms in an interactive game environment. The project demonstrates:
 
 1. **Algorithm Implementation:**
    - ✅ **Dijkstra's algorithm**: Optimal pathfinding with uniform cost exploration

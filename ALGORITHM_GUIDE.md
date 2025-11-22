@@ -1,6 +1,6 @@
-# Algorithm Implementation Guide for MazeRunner X
+# Algorithm Implementation Guide for MazeRunner
 
-This guide explains how the pathfinding algorithms work in MazeRunner X and how students can implement and extend them.
+This guide explains how the pathfinding algorithms work in MazeRunner and how students can implement and extend them.
 
 ## Available Algorithms
 

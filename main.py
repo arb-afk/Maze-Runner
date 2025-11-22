@@ -1,5 +1,5 @@
 """
-MazeRunner X - Main Game Loop
+MazeRunner - Main Game Loop
 The Intelligent Shortest Path Challenge
 
 This is the main entry point for the game. The Game class manages:
@@ -44,7 +44,7 @@ class Game:
         self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
         
         # Set the window title (shown in the title bar)
-        pygame.display.set_caption("MazeRunner X - The Intelligent Shortest Path Challenge")
+        pygame.display.set_caption("MazeRunner - The Intelligent Shortest Path Challenge")
         
         # Create a clock object to control frame rate (FPS)
         # This ensures the game runs at consistent speed (60 FPS)

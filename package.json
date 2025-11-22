@@ -1,7 +1,7 @@
 {
   "name": "mazerunner-x",
   "version": "1.0.0",
-  "description": "MazeRunner X - The Intelligent Shortest Path Challenge",
+  "description": "MazeRunner - The Intelligent Shortest Path Challenge",
   "scripts": {
     "build": "pygbag --build main.py",
     "dev": "pygbag main.py"

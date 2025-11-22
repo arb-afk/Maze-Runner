@@ -1,5 +1,5 @@
 """
-Configuration file for MazeRunner X
+Configuration file for MazeRunner
 Contains constants, colors, and game settings
 
 This file stores all the configuration values used throughout the game.

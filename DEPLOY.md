@@ -1,6 +1,6 @@
 # Deploying to Vercel
 
-This guide explains how to deploy MazeRunner X to Vercel.
+This guide explains how to deploy MazeRunner to Vercel.
 
 ## Quick Start (Easiest Method)
 
