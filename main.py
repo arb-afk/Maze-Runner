@@ -19,9 +19,11 @@ The game follows a standard game loop pattern:
 # Import required libraries
 import pygame  # Game development library for graphics, input, and game loop
 import sys     # System-specific functions (for exiting the program)
+import asyncio # Async support for pygbag/web compatibility
 from config import *        # Import all configuration constants (colors, sizes, etc.)
 from game_modes import GameState  # Import game state manager (handles different game modes)
 from ui import UI           # Import UI renderer (draws menus, stats, etc.)
+
 
 class Game:
     """
@@ -1051,7 +1053,7 @@ class Game:
         # Update display
         pygame.display.flip()
     
-    def run(self):
+    async def run(self):
         """
         Main game loop - this is the heart of the game.
         
@@ -1062,21 +1064,33 @@ class Game:
         3. Draws everything to the screen
         
         This loop runs at 60 FPS (frames per second) as specified by FPS in config.py
+        
+        This is an async function for pygbag/web compatibility.
         """
         # Initialize current time (used for animations and timing)
         current_time = pygame.time.get_ticks() / 1000.0  # Convert milliseconds to seconds
+        last_frame_time = current_time
+        target_frame_time = 1.0 / FPS  # Target time per frame in seconds
         
         # ====================================================================
         # MAIN GAME LOOP
         # ====================================================================
         # This loop runs continuously until the game is closed
         while self.running:
-            # Control frame rate - tick() waits to maintain 60 FPS
-            # Returns time since last frame in milliseconds, convert to seconds
-            dt = self.clock.tick(FPS) / 1000.0
-            
-            # Update current time for this frame
+            # Calculate delta time manually for async compatibility
             current_time = pygame.time.get_ticks() / 1000.0
+            dt = current_time - last_frame_time
+            
+            # Limit frame rate using async sleep (pygbag compatible)
+            # If frame was too fast, sleep to maintain target FPS
+            if dt < target_frame_time:
+                sleep_time = target_frame_time - dt
+                await asyncio.sleep(sleep_time)
+                # Recalculate time after sleep
+                current_time = pygame.time.get_ticks() / 1000.0
+                dt = current_time - last_frame_time
+            
+            last_frame_time = current_time
             
             # ================================================================
             # GAME LOOP STEPS (standard pattern for all games)
@@ -1090,6 +1104,9 @@ class Game:
             
             # Step 3: Draw everything to the screen
             self.draw()
+            
+            # Yield control to the event loop (important for pygbag)
+            await asyncio.sleep(0)  # Yield to allow other async tasks
         
         # ====================================================================
         # CLEANUP
@@ -1104,10 +1121,19 @@ class Game:
 # This code only runs when the script is executed directly (not when imported)
 # This is the standard Python pattern for making a script executable
 
-if __name__ == "__main__":
+async def main():
+    """
+    Async main entry point for pygbag compatibility.
+    This function is called by pygbag when running in the browser.
+    """
     # Create a new Game instance (this initializes everything)
     game = Game()
     
-    # Start the game loop (this runs until the game is closed)
-    game.run()
+    # Start the async game loop (this runs until the game is closed)
+    await game.run()
+
+if __name__ == "__main__":
+    # Run the async main function
+    # This works both for regular Python execution and pygbag
+    asyncio.run(main())
 

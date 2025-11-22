@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "buildCommand": "echo 'Build locally with: pygbag --build main.py'",
+  "outputDirectory": "build/web",
+  "routes": [
+    {
+      "src": "/(.*\\.wasm)",
+      "headers": {
+        "Content-Type": "application/wasm",
+        "Cross-Origin-Embedder-Policy": "require-corp",
+        "Cross-Origin-Opener-Policy": "same-origin"
+      }
+    },
+    {
+      "src": "/(.*\\.(data|js|html|css|png|jpg|jpeg|gif|svg|ico|json))",
+      "headers": {
+        "Cache-Control": "public, max-age=31536000, immutable"
+      }
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ]
+}
+
