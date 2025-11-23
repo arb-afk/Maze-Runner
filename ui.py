@@ -200,9 +200,35 @@ class UI:
             desc_text = font_description.render(mode['description'], True, (100, 100, 100))
             self.screen.blit(desc_text, (x + 80, y + 50))
         
+        # Tutorial button
+        tutorial_button_width = 200
+        tutorial_button_height = 50
+        tutorial_button_x = (WINDOW_WIDTH - tutorial_button_width) // 2
+        tutorial_button_y = WINDOW_HEIGHT - 120
+        tutorial_button_rect = pygame.Rect(tutorial_button_x, tutorial_button_y, tutorial_button_width, tutorial_button_height)
+        
+        # Check if mouse is hovering over tutorial button
+        is_tutorial_hovered = tutorial_button_rect.collidepoint(mouse_pos)
+        
+        # Store tutorial button for click detection
+        self.menu_buttons.append({
+            'rect': tutorial_button_rect,
+            'mode': 'Tutorial',
+            'mode_key': 'T'
+        })
+        
+        # Draw tutorial button
+        tutorial_bg_color = (100, 150, 200) if is_tutorial_hovered else (80, 130, 180)
+        pygame.draw.rect(self.screen, tutorial_bg_color, tutorial_button_rect, border_radius=8)
+        pygame.draw.rect(self.screen, (60, 100, 140), tutorial_button_rect, 2, border_radius=8)
+        
+        tutorial_text = font_subtitle.render("Tutorial (T)", True, (255, 255, 255))
+        tutorial_text_rect = tutorial_text.get_rect(center=tutorial_button_rect.center)
+        self.screen.blit(tutorial_text, tutorial_text_rect)
+        
         # Footer instructions
         footer_y = WINDOW_HEIGHT - 60
-        footer_text = "Click on a mode to start  |  Press 1-4 or ESC to quit"
+        footer_text = "Click on a mode to start  |  Press T for Tutorial  |  ESC to quit"
         footer = font_footer.render(footer_text, True, (120, 120, 120))
         footer_rect = footer.get_rect(center=(WINDOW_WIDTH // 2, footer_y))
         self.screen.blit(footer, footer_rect)
@@ -213,6 +239,259 @@ class UI:
             if button['rect'].collidepoint(mouse_pos):
                 return button['mode_key']
         return None
+    
+    def draw_tutorial_cell(self, x, y, cell_size, terrain_type):
+        """Draw a visual representation of a cell type for the tutorial"""
+        cell_rect = pygame.Rect(x, y, cell_size, cell_size)
+        
+        if terrain_type == 'GRASS':
+            pygame.draw.rect(self.screen, COLORS['GRASS'], cell_rect)
+            # Draw cost number
+            font = pygame.font.Font(None, 20)
+            cost_text = font.render("1", True, (255, 255, 255))
+            text_rect = cost_text.get_rect(center=cell_rect.center)
+            shadow = font.render("1", True, (0, 0, 0))
+            self.screen.blit(shadow, (text_rect.x + 1, text_rect.y + 1))
+            self.screen.blit(cost_text, text_rect)
+        elif terrain_type == 'WATER':
+            pygame.draw.rect(self.screen, COLORS['WATER'], cell_rect)
+            font = pygame.font.Font(None, 20)
+            cost_text = font.render("3", True, (255, 255, 255))
+            text_rect = cost_text.get_rect(center=cell_rect.center)
+            shadow = font.render("3", True, (0, 0, 0))
+            self.screen.blit(shadow, (text_rect.x + 1, text_rect.y + 1))
+            self.screen.blit(cost_text, text_rect)
+        elif terrain_type == 'MUD':
+            pygame.draw.rect(self.screen, COLORS['MUD'], cell_rect)
+            font = pygame.font.Font(None, 20)
+            cost_text = font.render("5", True, (255, 255, 255))
+            text_rect = cost_text.get_rect(center=cell_rect.center)
+            shadow = font.render("5", True, (0, 0, 0))
+            self.screen.blit(shadow, (text_rect.x + 1, text_rect.y + 1))
+            self.screen.blit(cost_text, text_rect)
+        elif terrain_type == 'LAVA':
+            pygame.draw.rect(self.screen, COLORS['LAVA'], cell_rect)
+            # Add glow effect
+            import time
+            pulse = int(time.time() * 4) % 2
+            glow_rect = cell_rect.inflate(pulse * 2, pulse * 2)
+            glow_surf = pygame.Surface((glow_rect.width, glow_rect.height), pygame.SRCALPHA)
+            glow_color = (*COLORS.get('LAVA_GLOW', (255, 100, 0)), 100)
+            pygame.draw.rect(glow_surf, glow_color, 
+                            pygame.Rect(0, 0, glow_rect.width, glow_rect.height))
+            self.screen.blit(glow_surf, glow_rect.topleft)
+            center_x, center_y = cell_rect.centerx, cell_rect.centery
+            pygame.draw.circle(self.screen, COLORS.get('LAVA_GLOW', (255, 150, 0)), 
+                             (center_x, center_y), cell_size // 3)
+            font = pygame.font.Font(None, 16)
+            cost_text = font.render("∞", True, (255, 255, 255))
+            text_rect = cost_text.get_rect(center=cell_rect.center)
+            shadow = font.render("∞", True, (0, 0, 0))
+            self.screen.blit(shadow, (text_rect.x + 1, text_rect.y + 1))
+            self.screen.blit(cost_text, text_rect)
+        elif terrain_type == 'SPIKES':
+            pygame.draw.rect(self.screen, COLORS['SPIKES'], cell_rect)
+            pygame.draw.line(self.screen, COLORS['SPIKES_DARK'], cell_rect.topleft, cell_rect.bottomright, 2)
+            pygame.draw.line(self.screen, COLORS['SPIKES_DARK'], cell_rect.topright, cell_rect.bottomleft, 2)
+            pygame.draw.rect(self.screen, COLORS['SPIKES_DARK'], cell_rect, 1)
+            font = pygame.font.Font(None, 20)
+            cost_text = font.render("4", True, (255, 255, 255))
+            text_rect = cost_text.get_rect(center=cell_rect.center)
+            shadow = font.render("4", True, (0, 0, 0))
+            self.screen.blit(shadow, (text_rect.x + 1, text_rect.y + 1))
+            self.screen.blit(cost_text, text_rect)
+        elif terrain_type == 'THORNS':
+            pygame.draw.rect(self.screen, COLORS['THORNS'], cell_rect)
+            cx, cy = cell_rect.centerx, cell_rect.centery
+            radius = 2
+            for dx in [-4, 0, 4]:
+                for dy in [-4, 0, 4]:
+                    pygame.draw.circle(self.screen, COLORS['THORNS_DARK'], (cx + dx, cy + dy), radius)
+            pygame.draw.rect(self.screen, COLORS['THORNS_DARK'], cell_rect, 1)
+            font = pygame.font.Font(None, 20)
+            cost_text = font.render("3", True, (255, 255, 255))
+            text_rect = cost_text.get_rect(center=cell_rect.center)
+            shadow = font.render("3", True, (0, 0, 0))
+            self.screen.blit(shadow, (text_rect.x + 1, text_rect.y + 1))
+            self.screen.blit(cost_text, text_rect)
+        elif terrain_type == 'QUICKSAND':
+            pygame.draw.rect(self.screen, COLORS['QUICKSAND'], cell_rect)
+            for i in range(cell_rect.left, cell_rect.right + cell_size, 4):
+                pygame.draw.line(self.screen, COLORS['QUICKSAND_DARK'], 
+                               (i, cell_rect.top), 
+                               (i + cell_size, cell_rect.bottom), 1)
+            pygame.draw.rect(self.screen, COLORS['QUICKSAND_DARK'], cell_rect, 1)
+            font = pygame.font.Font(None, 20)
+            cost_text = font.render("6", True, (255, 255, 255))
+            text_rect = cost_text.get_rect(center=cell_rect.center)
+            shadow = font.render("6", True, (0, 0, 0))
+            self.screen.blit(shadow, (text_rect.x + 1, text_rect.y + 1))
+            self.screen.blit(cost_text, text_rect)
+        elif terrain_type == 'ROCKS':
+            pygame.draw.rect(self.screen, COLORS['ROCKS'], cell_rect)
+            cx, cy = cell_rect.centerx, cell_rect.centery
+            pygame.draw.circle(self.screen, COLORS['ROCKS_DARK'], (cx - 5, cy - 5), 3)
+            pygame.draw.circle(self.screen, COLORS['ROCKS_DARK'], (cx + 5, cy), 3)
+            pygame.draw.circle(self.screen, COLORS['ROCKS_DARK'], (cx - 2, cy + 6), 3)
+            pygame.draw.rect(self.screen, COLORS['ROCKS_DARK'], cell_rect, 1)
+            font = pygame.font.Font(None, 20)
+            cost_text = font.render("2", True, (255, 255, 255))
+            text_rect = cost_text.get_rect(center=cell_rect.center)
+            shadow = font.render("2", True, (0, 0, 0))
+            self.screen.blit(shadow, (text_rect.x + 1, text_rect.y + 1))
+            self.screen.blit(cost_text, text_rect)
+        elif terrain_type == 'WALL':
+            pygame.draw.rect(self.screen, COLORS['WALL'], cell_rect)
+            pygame.draw.line(self.screen, COLORS.get('WALL_LIGHT', (60, 60, 60)), 
+                           cell_rect.topleft, cell_rect.topright, 1)
+            font = pygame.font.Font(None, 16)
+            cost_text = font.render("∞", True, (255, 255, 255))
+            text_rect = cost_text.get_rect(center=cell_rect.center)
+            shadow = font.render("∞", True, (0, 0, 0))
+            self.screen.blit(shadow, (text_rect.x + 1, text_rect.y + 1))
+            self.screen.blit(cost_text, text_rect)
+        
+        # Draw grid border
+        pygame.draw.rect(self.screen, (200, 200, 200), cell_rect, 1)
+    
+    def draw_tutorial(self):
+        """Draw tutorial screen explaining terrain vs obstacles"""
+        # Background gradient (same as main menu)
+        for y in range(0, WINDOW_HEIGHT, 4):
+            progress = y / WINDOW_HEIGHT
+            color_value = int(240 - progress * 40)
+            pygame.draw.line(self.screen, (color_value, color_value, color_value + 10), 
+                           (0, y), (WINDOW_WIDTH, y), 4)
+        
+        # Fonts
+        font_title = pygame.font.Font(None, 72)
+        font_heading = pygame.font.Font(None, 40)
+        font_text = pygame.font.Font(None, 28)
+        font_small = pygame.font.Font(None, 24)
+        font_footer = pygame.font.Font(None, 20)
+        
+        # Title
+        title = font_title.render("Terrain vs Obstacles Tutorial", True, (33, 33, 33))
+        title_rect = title.get_rect(center=(WINDOW_WIDTH // 2, 60))
+        self.screen.blit(title, title_rect)
+        
+        y_offset = 140
+        cell_size = 40  # Size of example cells in tutorial
+        
+        # Section 1: Terrain
+        heading1 = font_heading.render("TERRAIN (Grass, Water, Mud, Lava)", True, (76, 175, 80))
+        self.screen.blit(heading1, (50, y_offset))
+        y_offset += 50
+        
+        terrain_examples = [
+            ('GRASS', "Cost: 1 energy", "Fast, easy terrain - most common and cheapest"),
+            ('WATER', "Cost: 3 energy", "Slower to cross - 3x more expensive than grass"),
+            ('MUD', "Cost: 5 energy", "Very slow - 5x more expensive than grass"),
+            ('LAVA', "Cost: ∞ (infinite)", "Completely impassable - blocks all movement"),
+        ]
+        
+        for terrain_type, cost, description in terrain_examples:
+            # Draw visual cell
+            cell_x = 80
+            cell_y = y_offset
+            self.draw_tutorial_cell(cell_x, cell_y, cell_size, terrain_type)
+            
+            # Draw text next to cell
+            text_x = cell_x + cell_size + 20
+            name_text = font_text.render(f"{terrain_type}", True, (50, 50, 50))
+            self.screen.blit(name_text, (text_x, y_offset + 5))
+            
+            cost_text = font_small.render(cost, True, (100, 100, 100))
+            self.screen.blit(cost_text, (text_x, y_offset + 30))
+            
+            # Wrap description if too long
+            desc = font_small.render(description, True, (100, 100, 100))
+            desc_x = text_x + 180
+            if desc_x + desc.get_width() < WINDOW_WIDTH - 50:
+                self.screen.blit(desc, (desc_x, y_offset + 15))
+            else:
+                # Split description if needed
+                words = description.split()
+                line1 = ' '.join(words[:len(words)//2])
+                line2 = ' '.join(words[len(words)//2:])
+                desc1 = font_small.render(line1, True, (100, 100, 100))
+                desc2 = font_small.render(line2, True, (100, 100, 100))
+                self.screen.blit(desc1, (desc_x, y_offset + 5))
+                self.screen.blit(desc2, (desc_x, y_offset + 25))
+            
+            y_offset += 55
+        
+        y_offset += 20
+        
+        # Section 2: Obstacles (The Rest)
+        heading2 = font_heading.render("OBSTACLES (Spikes, Thorns, Quicksand, Rocks, Walls)", True, (255, 152, 0))
+        self.screen.blit(heading2, (50, y_offset))
+        y_offset += 50
+        
+        obstacles = [
+            ('SPIKES', "Cost: 4 energy", "Dangerous but passable - moderate cost"),
+            ('THORNS', "Cost: 3 energy", "Painful but passable - same cost as water"),
+            ('QUICKSAND', "Cost: 6 energy", "Very slow but passable - highest cost obstacle"),
+            ('ROCKS', "Cost: 2 energy", "Slightly difficult but passable - low cost"),
+            ('WALL', "Cost: ∞ (infinite)", "Maze boundaries - completely impassable"),
+        ]
+        
+        for obs_type, cost, description in obstacles:
+            # Draw visual cell
+            cell_x = 80
+            cell_y = y_offset
+            self.draw_tutorial_cell(cell_x, cell_y, cell_size, obs_type)
+            
+            # Draw text next to cell
+            text_x = cell_x + cell_size + 20
+            name_text = font_text.render(f"{obs_type}", True, (50, 50, 50))
+            self.screen.blit(name_text, (text_x, y_offset + 5))
+            
+            cost_text = font_small.render(cost, True, (100, 100, 100))
+            self.screen.blit(cost_text, (text_x, y_offset + 30))
+            
+            # Wrap description if too long
+            desc = font_small.render(description, True, (100, 100, 100))
+            desc_x = text_x + 180
+            if desc_x + desc.get_width() < WINDOW_WIDTH - 50:
+                self.screen.blit(desc, (desc_x, y_offset + 15))
+            else:
+                # Split description if needed
+                words = description.split()
+                line1 = ' '.join(words[:len(words)//2])
+                line2 = ' '.join(words[len(words)//2:])
+                desc1 = font_small.render(line1, True, (100, 100, 100))
+                desc2 = font_small.render(line2, True, (100, 100, 100))
+                self.screen.blit(desc1, (desc_x, y_offset + 5))
+                self.screen.blit(desc2, (desc_x, y_offset + 25))
+            
+            y_offset += 55
+        
+        y_offset += 30
+        
+        # Key Differences Box
+        box_rect = pygame.Rect(50, y_offset, WINDOW_WIDTH - 100, 120)
+        pygame.draw.rect(self.screen, (240, 240, 240), box_rect, border_radius=10)
+        pygame.draw.rect(self.screen, (200, 200, 200), box_rect, 2, border_radius=10)
+        
+        key_heading = font_heading.render("Key Differences", True, (33, 33, 33))
+        self.screen.blit(key_heading, (70, y_offset + 10))
+        
+        diff_text1 = font_text.render("• TERRAIN: Grass, Water, Mud, and Lava - basic terrain types", True, (50, 50, 50))
+        self.screen.blit(diff_text1, (70, y_offset + 50))
+        
+        diff_text2 = font_text.render("• OBSTACLES: Everything else - Spikes, Thorns, Quicksand, Rocks, Walls", True, (50, 50, 50))
+        self.screen.blit(diff_text2, (70, y_offset + 75))
+        
+        diff_text3 = font_text.render("• Both can be passable (with costs) or impassable (infinite cost)", True, (50, 50, 50))
+        self.screen.blit(diff_text3, (70, y_offset + 100))
+        
+        # Footer
+        footer_y = WINDOW_HEIGHT - 40
+        footer_text = "Press ESC or T to return to main menu"
+        footer = font_footer.render(footer_text, True, (120, 120, 120))
+        footer_rect = footer.get_rect(center=(WINDOW_WIDTH // 2, footer_y))
+        self.screen.blit(footer, footer_rect)
     
     def draw_ui_panel(self, game_state):
         """Draw the right-side UI panel with modern styling"""

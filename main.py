@@ -60,6 +60,7 @@ class Game:
         
         self.in_menu = True  # Whether we're currently in the main menu
                              # True = showing menu, False = playing game
+        self.showing_tutorial = False  # Whether tutorial screen is displayed
                              
         self.game_state = None  # Current game state (None when in menu)
                                # Contains: maze, player, AI, game mode, etc.
@@ -152,24 +153,28 @@ class Game:
                 # Left mouse button click (button 1)
                 elif event.button == 1:
                     # If we're in the menu, check if user clicked on a mode button
-                    if self.in_menu:
+                    if self.in_menu and not self.showing_tutorial:
                         # Check which mode button was clicked (if any)
                         clicked_mode = self.ui.get_clicked_mode(event.pos)
                         
                         if clicked_mode:
-                            # Map the clicked button key to the actual mode name
-                            # The UI returns '1', '2', etc., we need to convert to mode names
-                            mode_map = {
-                                '1': 'Explore',        # Mode 1: Simple exploration
-                                '2': 'Obstacle Course', # Mode 2: Obstacles with costs
-                                '3': 'Multi-Goal',     # Mode 3: Multiple checkpoints
-                                '4': 'AI Duel',        # Mode 4: Race against AI
-                                '5': 'Blind Duel'      # Mode 5: Fog of war duel
-                            }
-                            
-                            if clicked_mode in mode_map:
-                                # Start the selected game mode
-                                self.start_game(mode_map[clicked_mode])
+                            # Handle tutorial button
+                            if clicked_mode == 'T':
+                                self.showing_tutorial = True
+                            else:
+                                # Map the clicked button key to the actual mode name
+                                # The UI returns '1', '2', etc., we need to convert to mode names
+                                mode_map = {
+                                    '1': 'Explore',        # Mode 1: Simple exploration
+                                    '2': 'Obstacle Course', # Mode 2: Obstacles with costs
+                                    '3': 'Multi-Goal',     # Mode 3: Multiple checkpoints
+                                    '4': 'AI Duel',        # Mode 4: Race against AI
+                                    '5': 'Blind Duel'      # Mode 5: Fog of war duel
+                                }
+                                
+                                if clicked_mode in mode_map:
+                                    # Start the selected game mode
+                                    self.start_game(mode_map[clicked_mode])
             
             # ====================================================================
             # KEYBOARD INPUT HANDLING
@@ -181,6 +186,17 @@ class Game:
                 # MENU CONTROLS (when in main menu)
                 # ====================================================================
                 if self.in_menu:
+                    # Tutorial toggle
+                    if event.key == pygame.K_t:
+                        self.showing_tutorial = not self.showing_tutorial
+                        continue
+                    
+                    # If showing tutorial, only allow ESC to go back
+                    if self.showing_tutorial:
+                        if event.key == pygame.K_ESCAPE:
+                            self.showing_tutorial = False
+                        continue
+                    
                     # Number keys 1-5 select game modes from the menu
                     if event.key == pygame.K_1:
                         self.start_game('Explore')
@@ -502,20 +518,25 @@ class Game:
         
         # Draw main menu if in menu mode
         if self.in_menu:
-            self.ui.draw_main_menu()
-            
-            # Change cursor to hand when hovering over buttons
-            mouse_pos = pygame.mouse.get_pos()
-            hovering = False
-            for button in self.ui.menu_buttons:
-                if button['rect'].collidepoint(mouse_pos):
-                    hovering = True
-                    break
-            
-            if hovering:
-                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
+            # Draw tutorial screen if showing, otherwise draw main menu
+            if self.showing_tutorial:
+                self.ui.draw_tutorial()
             else:
-                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
+                self.ui.draw_main_menu()
+            
+            # Change cursor to hand when hovering over buttons (only if not in tutorial)
+            if not self.showing_tutorial:
+                mouse_pos = pygame.mouse.get_pos()
+                hovering = False
+                for button in self.ui.menu_buttons:
+                    if button['rect'].collidepoint(mouse_pos):
+                        hovering = True
+                        break
+                
+                if hovering:
+                    pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
+                else:
+                    pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
             
             pygame.display.flip()
             return
