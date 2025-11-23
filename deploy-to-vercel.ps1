@@ -16,3 +16,4 @@ if (Test-Path "build\web") {
     Write-Host "Build failed! Check for errors above." -ForegroundColor Red
 }
 
+

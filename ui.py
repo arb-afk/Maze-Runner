@@ -146,7 +146,7 @@ class UI:
                 'name': 'Blind Duel',
                 'key': '5',
                 'color': (33, 150, 243),
-                'description': 'Fog of War: Limited visibility! Choose your AI opponent'
+                'description': 'Fog of War mode: Limited visibility! Player sees 2 cells, AI sees 1. Collect rewards to increase vision'
             }
         ]
         
@@ -565,8 +565,25 @@ class UI:
                 # AI has moved - show actual gameplay cost
                 ai_cost_display = game_state.ai_agent.total_cost
             
+            # Check if the algorithm uses a heuristic
+            # Algorithms that DON'T use heuristics: BFS, DIJKSTRA
+            # Algorithms that DO use heuristics: ASTAR, BIDIRECTIONAL_ASTAR, MULTI_OBJECTIVE, MODIFIED_ASTAR_FOG
+            algorithms_without_heuristic = ['BFS', 'DIJKSTRA']
+            
+            # Determine if this algorithm uses a heuristic
+            if active_algo:
+                uses_heuristic = active_algo not in algorithms_without_heuristic
+            else:
+                uses_heuristic = True  # Default to showing heuristic if algo unknown
+            
+            # Show heuristic only if algorithm uses one
+            if uses_heuristic and game_state.ai_pathfinder:
+                heuristic_display = game_state.ai_pathfinder.heuristic_type
+            else:
+                heuristic_display = 'N/A'
+            
             info.extend([
-                f"Heuristic: {game_state.ai_pathfinder.heuristic_type if game_state.ai_pathfinder else 'N/A'}",
+                f"Heuristic: {heuristic_display}",
                 f"Path Found: {'Yes' if result.path_found else 'No'}",
                 f"AI Path Cost: {ai_cost_display:.1f}",
                 f"Nodes Explored: {result.nodes_explored}"
