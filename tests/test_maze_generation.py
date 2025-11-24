@@ -30,9 +30,9 @@ def test_maze_dimensions():
         maze = Maze(width=width, height=height)
         assert maze.width == width, f"Expected width {width}, got {maze.width}"
         assert maze.height == height, f"Expected height {height}, got {maze.height}"
-        print(f"  ✅ {width}×{height}: Correct dimensions")
+        print(f"  PASS: {width}×{height}: Correct dimensions")
     
-    print("✅ All dimension tests passed\n")
+    print("PASS: All dimension tests passed\n")
 
 def test_maze_is_perfect():
     """Test that maze is a perfect maze (exactly one path between any two cells)"""
@@ -65,8 +65,8 @@ def test_maze_is_perfect():
             assert result1.path_found == result2.path_found, \
                 f"Path should exist in both directions between {cell1} and {cell2}"
     
-    print("  ✅ All cells are reachable from each other")
-    print("✅ Perfect maze property verified\n")
+    print("  PASS: All cells are reachable from each other")
+    print("PASS: Perfect maze property verified\n")
 
 def test_start_and_goal_positions():
     """Test that start and goal positions are valid"""
@@ -93,8 +93,8 @@ def test_start_and_goal_positions():
         assert maze.is_passable(*maze.start_pos), "Start position should be passable"
         assert maze.is_passable(*maze.goal_pos), "Goal position should be passable"
     
-    print("  ✅ Start and goal positions are valid")
-    print("✅ Start/goal position tests passed\n")
+    print("  PASS: Start and goal positions are valid")
+    print("PASS: Start/goal position tests passed\n")
 
 def test_all_cells_reachable():
     """Test that all passable cells are reachable from start"""
@@ -114,8 +114,8 @@ def test_all_cells_reachable():
     assert len(unreachable) == 0, \
         f"Found {len(unreachable)} unreachable cells: {unreachable[:5]}"
     
-    print(f"  ✅ All {sum(1 for y in range(maze.height) for x in range(maze.width) if maze.is_passable(x, y))} passable cells are reachable")
-    print("✅ Reachability test passed\n")
+    print(f"  PASS: All {sum(1 for y in range(maze.height) for x in range(maze.width) if maze.is_passable(x, y))} passable cells are reachable")
+    print("PASS: Reachability test passed\n")
 
 def test_wall_placement():
     """Test that walls are properly placed"""
@@ -140,8 +140,8 @@ def test_wall_placement():
     assert 0.3 < path_ratio < 0.7, \
         f"Path ratio should be reasonable (30-70%), got {path_ratio:.1%}"
     
-    print(f"  ✅ Walls: {wall_count}, Paths: {path_count} (ratio: {path_ratio:.1%})")
-    print("✅ Wall placement test passed\n")
+    print(f"  PASS: Walls: {wall_count}, Paths: {path_count} (ratio: {path_ratio:.1%})")
+    print("PASS: Wall placement test passed\n")
 
 def test_terrain_assignment():
     """Test that terrain is properly assigned"""
@@ -161,8 +161,8 @@ def test_terrain_assignment():
     assert 'GRASS' in terrain_count or 'WATER' in terrain_count or 'MUD' in terrain_count, \
         "Should have terrain types assigned"
     
-    print(f"  ✅ Terrain types assigned: {list(terrain_count.keys())}")
-    print("✅ Terrain assignment test passed\n")
+    print(f"  PASS: Terrain types assigned: {list(terrain_count.keys())}")
+    print("PASS: Terrain assignment test passed\n")
 
 def test_obstacle_placement():
     """Test that obstacles can be placed correctly"""
@@ -181,8 +181,8 @@ def test_obstacle_placement():
                 if terrain in obstacle_types:
                     found_obstacles.add(terrain)
     
-    print(f"  ✅ Found obstacles: {list(found_obstacles)}")
-    print("✅ Obstacle placement test passed\n")
+    print(f"  PASS: Found obstacles: {list(found_obstacles)}")
+    print("PASS: Obstacle placement test passed\n")
 
 def test_maze_consistency():
     """Test that maze generation is consistent with same seed"""
@@ -205,8 +205,8 @@ def test_maze_consistency():
     
     assert differences == 0, f"Found {differences} cell differences with same seed"
     
-    print("  ✅ Same seed produces identical mazes")
-    print("✅ Consistency test passed\n")
+    print("  PASS: Same seed produces identical mazes")
+    print("PASS: Consistency test passed\n")
 
 def test_path_exists_start_to_goal():
     """Test that a path always exists from start to goal"""
@@ -223,8 +223,8 @@ def test_path_exists_start_to_goal():
     
     assert failures == 0, f"Found {failures} mazes without start-to-goal path"
     
-    print("  ✅ Path exists from start to goal in all mazes")
-    print("✅ Start-to-goal path test passed\n")
+    print("  PASS: Path exists from start to goal in all mazes")
+    print("PASS: Start-to-goal path test passed\n")
 
 def run_all_tests():
     """Run all maze generation tests"""
@@ -253,10 +253,10 @@ def run_all_tests():
             test()
             passed += 1
         except AssertionError as e:
-            print(f"❌ {test.__name__} FAILED: {e}\n")
+            print(f"FAIL: {test.__name__} FAILED: {e}\n")
             failed += 1
         except Exception as e:
-            print(f"❌ {test.__name__} ERROR: {e}\n")
+            print(f"ERROR: {test.__name__} ERROR: {e}\n")
             import traceback
             traceback.print_exc()
             failed += 1

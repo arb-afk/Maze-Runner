@@ -132,16 +132,22 @@ class Game:
                 # Only handle scrolling if we're in a duel mode (not in menu)
                 elif not self.in_menu and self.game_state and self.game_state.mode in duel_modes:
                     # event.y is positive when scrolling up, negative when scrolling down
-                    # Multiply by 30 pixels for smooth scrolling
+                    # Use same scroll amount as tutorial for consistency (30 pixels)
                     scroll_amount = event.y * 30
                     
-                    # Update scroll offset, but clamp it between 0 and max_scroll
-                    # max(0, ...) prevents scrolling above the top
-                    # min(..., self.max_scroll) prevents scrolling below the bottom
-                    self.scroll_offset = max(0, min(self.max_scroll, self.scroll_offset - scroll_amount))
+                    # Calculate new scroll offset
+                    new_scroll_offset = max(0, min(self.max_scroll, self.scroll_offset - scroll_amount))
                     
-                    # Recalculate maze positions based on new scroll offset
-                    self.calculate_split_screen_offsets()
+                    # Only recalculate if scroll actually changed (avoid unnecessary work)
+                    if abs(new_scroll_offset - self.scroll_offset) > 0.1:
+                        self.scroll_offset = new_scroll_offset
+                        # Only recalculate positions, not the entire split screen setup
+                        # (max_scroll and dimensions don't change during scrolling)
+                        header_space = 80
+                        actual_maze_height = MAZE_HEIGHT * self.split_cell_size
+                        spacing = 30
+                        self.top_maze_y = header_space - self.scroll_offset
+                        self.bottom_maze_y = header_space + actual_maze_height + spacing - self.scroll_offset
             
             # ====================================================================
             # MOUSE BUTTON CLICKS
@@ -156,17 +162,29 @@ class Game:
                     if event.button == 4:  # Mouse wheel scroll up
                         if self.in_menu and self.showing_tutorial:
                             max_scroll = getattr(self.ui, 'tutorial_max_scroll', 0)
-                            self.tutorial_scroll_offset = max(0, self.tutorial_scroll_offset - 30)
-                        else:
-                            self.scroll_offset = max(0, self.scroll_offset - 30)
-                            self.calculate_split_screen_offsets()
+                            self.tutorial_scroll_offset = max(0, self.tutorial_scroll_offset - 15)
+                        elif not self.in_menu and self.game_state and self.game_state.mode in duel_modes:
+                            new_scroll_offset = max(0, self.scroll_offset - 30)
+                            if abs(new_scroll_offset - self.scroll_offset) > 0.1:
+                                self.scroll_offset = new_scroll_offset
+                                header_space = 80
+                                actual_maze_height = MAZE_HEIGHT * self.split_cell_size
+                                spacing = 30
+                                self.top_maze_y = header_space - self.scroll_offset
+                                self.bottom_maze_y = header_space + actual_maze_height + spacing - self.scroll_offset
                     elif event.button == 5:  # Mouse wheel scroll down
                         if self.in_menu and self.showing_tutorial:
                             max_scroll = getattr(self.ui, 'tutorial_max_scroll', 0)
-                            self.tutorial_scroll_offset = min(max_scroll, self.tutorial_scroll_offset + 30)
-                        else:
-                            self.scroll_offset = min(self.max_scroll, self.scroll_offset + 30)
-                            self.calculate_split_screen_offsets()
+                            self.tutorial_scroll_offset = min(max_scroll, self.tutorial_scroll_offset + 15)
+                        elif not self.in_menu and self.game_state and self.game_state.mode in duel_modes:
+                            new_scroll_offset = min(self.max_scroll, self.scroll_offset + 30)
+                            if abs(new_scroll_offset - self.scroll_offset) > 0.1:
+                                self.scroll_offset = new_scroll_offset
+                                header_space = 80
+                                actual_maze_height = MAZE_HEIGHT * self.split_cell_size
+                                spacing = 30
+                                self.top_maze_y = header_space - self.scroll_offset
+                                self.bottom_maze_y = header_space + actual_maze_height + spacing - self.scroll_offset
                 
                 # Left mouse button click (button 1)
                 elif event.button == 1:

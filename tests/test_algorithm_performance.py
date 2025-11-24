@@ -57,7 +57,7 @@ def test_algorithm_performance():
             goal = maze.goal_pos
             
             if not start or not goal:
-                print(f"  ⚠️  Iteration {iteration+1}: Invalid start/goal, skipping")
+                print(f"  WARNING: Iteration {iteration+1}: Invalid start/goal, skipping")
                 continue
             
             print(f"  Iteration {iteration+1}/{config['iterations']}: Start={start}, Goal={goal}")
@@ -116,10 +116,10 @@ def test_algorithm_performance():
                         if optimal_cost is not None and abs(path_cost - optimal_cost) < 0.01:
                             results[algo_name]['optimal_count'] += 1
                     else:
-                        print(f"    ⚠️  {algo_name}: No path found")
+                        print(f"    WARNING: {algo_name}: No path found")
                         
                 except Exception as e:
-                    print(f"    ❌ {algo_name}: Error - {e}")
+                    print(f"    ERROR: {algo_name}: Error - {e}")
                     import traceback
                     traceback.print_exc()
         
@@ -151,9 +151,9 @@ def test_algorithm_performance():
             is_optimal = algo_name in ['DIJKSTRA', 'ASTAR_MANHATTAN', 'ASTAR_EUCLIDEAN', 'BIDIRECTIONAL_ASTAR']
             if is_optimal and optimal_cost:
                 cost_diff = abs(avg_cost - optimal_cost)
-                optimal_str = "✅ Yes" if cost_diff < 0.1 else f"❌ No ({cost_diff:.1f} diff)"
+                optimal_str = "Yes" if cost_diff < 0.1 else f"No ({cost_diff:.1f} diff)"
             elif algo_name == 'BFS':
-                optimal_str = "❌ No (unweighted)"
+                optimal_str = "No (unweighted)"
             else:
                 optimal_str = "?"
             
@@ -198,11 +198,11 @@ def test_algorithm_performance():
     
     print("Algorithm Accuracy (Optimal Path Finding):")
     print("-" * 80)
-    print("  ✅ Dijkstra: 100% (guaranteed optimal)")
-    print("  ✅ A* (Manhattan): 100% (optimal with admissible heuristic)")
-    print("  ✅ A* (Euclidean): 100% (optimal with admissible heuristic)")
-    print("  ✅ Bidirectional A*: 100% (optimal with admissible heuristic)")
-    print("  ❌ BFS: 0% (not optimal, ignores terrain costs)")
+    print("  PASS: Dijkstra: 100% (guaranteed optimal)")
+    print("  PASS: A* (Manhattan): 100% (optimal with admissible heuristic)")
+    print("  PASS: A* (Euclidean): 100% (optimal with admissible heuristic)")
+    print("  PASS: Bidirectional A*: 100% (optimal with admissible heuristic)")
+    print("  FAIL: BFS: 0% (not optimal, ignores terrain costs)")
     print()
     
     print("Time Estimates for Solving Maze:")
@@ -241,7 +241,7 @@ def test_algorithm_accuracy():
     goal = maze.goal_pos
     
     if not start or not goal:
-        print("❌ Invalid start/goal positions")
+        print("ERROR: Invalid start/goal positions")
         return False
     
     print(f"Start: {start}, Goal: {goal}\n")
@@ -270,21 +270,21 @@ def test_algorithm_accuracy():
                 costs[algo_name] = path_cost
                 print(f"  {algo_name:<25} Cost: {path_cost:.1f}, Nodes: {result.nodes_explored}, Steps: {len(result.path)}")
             else:
-                print(f"  {algo_name:<25} ❌ No path found")
+                print(f"  {algo_name:<25} ERROR: No path found")
         except Exception as e:
-            print(f"  {algo_name:<25} ❌ Error: {e}")
+            print(f"  {algo_name:<25} ERROR: {e}")
     
     # Verify all costs match
     if costs:
         unique_costs = set(costs.values())
         if len(unique_costs) == 1:
-            print(f"\n✅ SUCCESS: All optimal algorithms found the same path cost ({list(unique_costs)[0]:.1f})")
+            print(f"\nSUCCESS: All optimal algorithms found the same path cost ({list(unique_costs)[0]:.1f})")
             return True
         else:
-            print(f"\n❌ FAILURE: Algorithms found different costs: {costs}")
+            print(f"\nFAILURE: Algorithms found different costs: {costs}")
             return False
     else:
-        print("\n❌ FAILURE: No algorithms found a path")
+        print("\nFAILURE: No algorithms found a path")
         return False
 
 if __name__ == "__main__":
@@ -305,14 +305,14 @@ if __name__ == "__main__":
         performance_results = test_algorithm_performance()
         
         print("\n" + "="*80)
-        print("✅ ALL TESTS COMPLETED")
+        print("ALL TESTS COMPLETED")
         print("="*80)
         
     except KeyboardInterrupt:
-        print("\n\n⚠️  Test interrupted by user")
+        print("\n\nWARNING: Test interrupted by user")
         sys.exit(1)
     except Exception as e:
-        print(f"\n❌ Error during testing: {e}")
+        print(f"\nERROR: Error during testing: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)

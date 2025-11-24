@@ -49,9 +49,9 @@ def test_all_algorithms_find_path():
         assert result.path_found, f"{algo_name} should find a path"
         assert len(result.path) > 0, f"{algo_name} should return a non-empty path"
         
-        print(f"  ✅ {algo_name}: Found path ({len(result.path)} steps)")
+        print(f"  PASS: {algo_name}: Found path ({len(result.path)} steps)")
     
-    print("✅ All algorithms find paths\n")
+    print("PASS: All algorithms find paths\n")
 
 def test_optimal_algorithms_same_cost():
     """Test that optimal algorithms find the same path cost"""
@@ -90,9 +90,9 @@ def test_optimal_algorithms_same_cost():
         unique_costs = set(costs.values())
         assert len(unique_costs) == 1, \
             f"All optimal algorithms should find same cost, got: {costs}"
-        print(f"  ✅ All algorithms found cost: {list(unique_costs)[0]:.1f}")
+        print(f"  PASS: All algorithms found cost: {list(unique_costs)[0]:.1f}")
     
-    print("✅ Optimal algorithms consistency test passed\n")
+    print("PASS: Optimal algorithms consistency test passed\n")
 
 def test_impassable_obstacles():
     """Test that algorithms correctly identify when no path exists"""
@@ -115,9 +115,9 @@ def test_impassable_obstacles():
         # Now pathfinding should fail or find alternative
         result2 = pf.bfs(maze.start_pos, maze.goal_pos)
         # Either no path found, or found alternative (which is fine)
-        print(f"  ✅ Algorithm handled blocked path correctly")
+        print(f"  PASS: Algorithm handled blocked path correctly")
     
-    print("✅ Impassable obstacles test passed\n")
+    print("PASS: Impassable obstacles test passed\n")
 
 def test_heuristic_values():
     """Test that heuristics return reasonable values"""
@@ -145,8 +145,8 @@ def test_heuristic_values():
     assert h_euclidean <= h_manhattan, \
         f"Euclidean ({h_euclidean}) should be <= Manhattan ({h_manhattan})"
     
-    print(f"  ✅ Manhattan: {h_manhattan}, Euclidean: {h_euclidean:.2f}")
-    print("✅ Heuristic values test passed\n")
+    print(f"  PASS: Manhattan: {h_manhattan}, Euclidean: {h_euclidean:.2f}")
+    print("PASS: Heuristic values test passed\n")
 
 def test_multi_objective_search():
     """Test multi-objective search for multiple checkpoints"""
@@ -171,12 +171,12 @@ def test_multi_objective_search():
             assert checkpoint in path_set, \
                 f"Checkpoint {checkpoint} not found in path"
         
-        print(f"  ✅ Found path visiting all {len(maze.checkpoints)} checkpoints")
-        print(f"  ✅ Path length: {len(result.path)} steps")
+        print(f"  PASS: Found path visiting all {len(maze.checkpoints)} checkpoints")
+        print(f"  PASS: Path length: {len(result.path)} steps")
     else:
-        print("  ⚠️  No path found (may be due to obstacle placement)")
+        print("  WARNING: No path found (may be due to obstacle placement)")
     
-    print("✅ Multi-objective search test passed\n")
+    print("PASS: Multi-objective search test passed\n")
 
 def test_algorithm_performance():
     """Test that algorithms complete in reasonable time"""
@@ -213,9 +213,9 @@ def test_algorithm_performance():
         assert elapsed_ms < 100, \
             f"{algo_name} took {elapsed_ms:.2f}ms (should be < 100ms)"
         
-        print(f"  ✅ {algo_name}: {elapsed_ms:.2f}ms")
+        print(f"  PASS: {algo_name}: {elapsed_ms:.2f}ms")
     
-    print("✅ Performance test passed\n")
+    print("PASS: Performance test passed\n")
 
 def run_all_tests():
     """Run all pathfinding algorithm tests"""
@@ -241,10 +241,10 @@ def run_all_tests():
             test()
             passed += 1
         except AssertionError as e:
-            print(f"❌ {test.__name__} FAILED: {e}\n")
+            print(f"FAIL: {test.__name__} FAILED: {e}\n")
             failed += 1
         except Exception as e:
-            print(f"❌ {test.__name__} ERROR: {e}\n")
+            print(f"ERROR: {test.__name__} ERROR: {e}\n")
             import traceback
             traceback.print_exc()
             failed += 1

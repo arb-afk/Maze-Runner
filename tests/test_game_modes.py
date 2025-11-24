@@ -28,8 +28,8 @@ def test_explore_mode():
     assert game_state.maze.start_pos is not None, "Start position should be set"
     assert game_state.maze.goal_pos is not None, "Goal position should be set"
     
-    print("  ✅ Explore mode initialized correctly")
-    print("✅ Explore mode test passed\n")
+    print("  PASS: Explore mode initialized correctly")
+    print("PASS: Explore mode test passed\n")
 
 def test_obstacle_course_mode():
     """Test Obstacle Course mode setup"""
@@ -51,8 +51,8 @@ def test_obstacle_course_mode():
                 if terrain in ['SPIKES', 'THORNS', 'QUICKSAND', 'ROCKS']:
                     obstacle_count += 1
     
-    print(f"  ✅ Obstacle Course mode initialized with {obstacle_count} obstacles")
-    print("✅ Obstacle Course mode test passed\n")
+    print(f"  PASS: Obstacle Course mode initialized with {obstacle_count} obstacles")
+    print("PASS: Obstacle Course mode test passed\n")
 
 def test_multigoal_mode():
     """Test Multi-Goal mode setup"""
@@ -72,8 +72,8 @@ def test_multigoal_mode():
         assert game_state.maze.is_passable(*checkpoint), \
             f"Checkpoint {checkpoint} should be on passable cell"
     
-    print(f"  ✅ Multi-Goal mode initialized with {len(game_state.maze.checkpoints)} checkpoints")
-    print("✅ Multi-Goal mode test passed\n")
+    print(f"  PASS: Multi-Goal mode initialized with {len(game_state.maze.checkpoints)} checkpoints")
+    print("PASS: Multi-Goal mode test passed\n")
 
 def test_ai_duel_mode():
     """Test AI Duel mode setup"""
@@ -88,8 +88,8 @@ def test_ai_duel_mode():
     assert game_state.ai_agent is not None, "AI agent should be created"
     assert game_state.turn == 'player', "Should start with player's turn"
     
-    print("  ✅ AI Duel mode initialized correctly")
-    print("✅ AI Duel mode test passed\n")
+    print("  PASS: AI Duel mode initialized correctly")
+    print("PASS: AI Duel mode test passed\n")
 
 def test_blind_duel_mode():
     """Test Blind Duel mode setup"""
@@ -103,8 +103,8 @@ def test_blind_duel_mode():
     assert game_state.player is not None, "Player should be created"
     assert game_state.ai_agent is not None, "AI agent should be created"
     
-    print("  ✅ Blind Duel mode initialized correctly")
-    print("✅ Blind Duel mode test passed\n")
+    print("  PASS: Blind Duel mode initialized correctly")
+    print("PASS: Blind Duel mode test passed\n")
 
 def test_checkpoint_collection():
     """Test that checkpoints can be collected"""
@@ -124,8 +124,8 @@ def test_checkpoint_collection():
         assert checkpoint in game_state.maze.checkpoints, \
             "Checkpoint should be in maze checkpoints"
     
-    print(f"  ✅ Checkpoints available: {len(game_state.maze.checkpoints)}")
-    print("✅ Checkpoint collection test passed\n")
+    print(f"  PASS: Checkpoints available: {len(game_state.maze.checkpoints)}")
+    print("PASS: Checkpoint collection test passed\n")
 
 def test_mode_reset():
     """Test that modes can be reset"""
@@ -143,8 +143,8 @@ def test_mode_reset():
     assert game_state.player.get_position() == game_state.maze.start_pos, \
         "Player should be reset to start position"
     
-    print("  ✅ Mode reset works correctly")
-    print("✅ Mode reset test passed\n")
+    print("  PASS: Mode reset works correctly")
+    print("PASS: Mode reset test passed\n")
 
 def run_all_tests():
     """Run all game mode tests"""
@@ -171,10 +171,10 @@ def run_all_tests():
             test()
             passed += 1
         except AssertionError as e:
-            print(f"❌ {test.__name__} FAILED: {e}\n")
+            print(f"FAIL: {test.__name__} FAILED: {e}\n")
             failed += 1
         except Exception as e:
-            print(f"❌ {test.__name__} ERROR: {e}\n")
+            print(f"ERROR: {test.__name__} ERROR: {e}\n")
             import traceback
             traceback.print_exc()
             failed += 1

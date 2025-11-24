@@ -25,10 +25,10 @@ def run_test_file(test_file):
         if hasattr(module, 'run_all_tests'):
             return module.run_all_tests()
         else:
-            print(f"⚠️  {test_file} does not have run_all_tests() function")
+            print(f"WARNING: {test_file} does not have run_all_tests() function")
             return True
     except Exception as e:
-        print(f"❌ Error running {test_file}: {e}")
+        print(f"ERROR: Error running {test_file}: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -54,7 +54,7 @@ def main():
         if os.path.exists(test_path):
             results[test_file] = run_test_file(test_path)
         else:
-            print(f"⚠️  Test file not found: {test_file}")
+            print(f"WARNING: Test file not found: {test_file}")
             results[test_file] = False
     
     # Summary
@@ -66,7 +66,7 @@ def main():
     total = len(results)
     
     for test_file, success in results.items():
-        status = "✅ PASSED" if success else "❌ FAILED"
+        status = "PASSED" if success else "FAILED"
         print(f"{status}: {test_file}")
     
     print("=" * 70)

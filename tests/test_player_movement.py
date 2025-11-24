@@ -35,7 +35,7 @@ def test_player_movement_directions():
             break
     
     if not start_pos:
-        print("  ⚠️  No passable cells found, skipping")
+        print("  WARNING: No passable cells found, skipping")
         return
     
     player = Player(maze, start_pos)
@@ -61,11 +61,11 @@ def test_player_movement_directions():
                 f"{name} move should update position correctly"
             assert player.energy < initial_energy, \
                 f"{name} move should decrease energy"
-            print(f"  ✅ {name}: Moved from {initial_pos} to {new_pos}")
+            print(f"  PASS: {name}: Moved from {initial_pos} to {new_pos}")
         else:
-            print(f"  ⚠️  {name}: Move blocked (may be wall or boundary)")
+            print(f"  WARNING: {name}: Move blocked (may be wall or boundary)")
     
-    print("✅ Movement directions test passed\n")
+    print("PASS: Movement directions test passed\n")
 
 def test_movement_costs():
     """Test that movement costs are calculated correctly"""
@@ -95,9 +95,9 @@ def test_movement_costs():
             assert cost_gained == expected_cost, \
                 f"Total cost should increase by {expected_cost}, got {cost_gained}"
             
-            print(f"  ✅ Water movement cost: {energy_lost} energy")
+            print(f"  PASS: Water movement cost: {energy_lost} energy")
     
-    print("✅ Movement costs test passed\n")
+    print("PASS: Movement costs test passed\n")
 
 def test_energy_depletion():
     """Test that player cannot move when out of energy"""
@@ -116,7 +116,7 @@ def test_energy_depletion():
             break
     
     if not start_pos:
-        print("  ⚠️  No passable cells found, skipping")
+        print("  WARNING: No passable cells found, skipping")
         return
     
     player = Player(maze, start_pos)
@@ -132,8 +132,8 @@ def test_energy_depletion():
     assert player.get_position() == initial_pos, \
         "Player position should not change when move fails"
     
-    print("  ✅ Player cannot move with 0 energy")
-    print("✅ Energy depletion test passed\n")
+    print("  PASS: Player cannot move with 0 energy")
+    print("PASS: Energy depletion test passed\n")
 
 def test_undo_functionality():
     """Test that undo works correctly"""
@@ -152,7 +152,7 @@ def test_undo_functionality():
             break
     
     if not start_pos:
-        print("  ⚠️  No passable cells found, skipping")
+        print("  WARNING: No passable cells found, skipping")
         return
     
     player = Player(maze, start_pos)
@@ -174,9 +174,9 @@ def test_undo_functionality():
         assert new_energy < initial_energy, "Energy should decrease after move"
         assert new_cost > initial_cost, "Total cost should increase after move"
         
-        print("  ✅ Move recorded correctly (undo tested in game_modes)")
+        print("  PASS: Move recorded correctly (undo tested in game_modes)")
     
-    print("✅ Undo functionality test passed\n")
+    print("PASS: Undo functionality test passed\n")
 
 def test_path_tracking():
     """Test that player path is tracked correctly"""
@@ -195,7 +195,7 @@ def test_path_tracking():
             break
     
     if not start_pos:
-        print("  ⚠️  No passable cells found, skipping")
+        print("  WARNING: No passable cells found, skipping")
         return
     
     player = Player(maze, start_pos)
@@ -214,8 +214,8 @@ def test_path_tracking():
     assert len(player.path) == moves_made + 1, \
         f"Path should have {moves_made + 1} positions, got {len(player.path)}"
     
-    print(f"  ✅ Path tracked correctly: {len(player.path)} positions")
-    print("✅ Path tracking test passed\n")
+    print(f"  PASS: Path tracked correctly: {len(player.path)} positions")
+    print("PASS: Path tracking test passed\n")
 
 def run_all_tests():
     """Run all player movement tests"""
@@ -240,10 +240,10 @@ def run_all_tests():
             test()
             passed += 1
         except AssertionError as e:
-            print(f"❌ {test.__name__} FAILED: {e}\n")
+            print(f"FAIL: {test.__name__} FAILED: {e}\n")
             failed += 1
         except Exception as e:
-            print(f"❌ {test.__name__} ERROR: {e}\n")
+            print(f"ERROR: {test.__name__} ERROR: {e}\n")
             import traceback
             traceback.print_exc()
             failed += 1

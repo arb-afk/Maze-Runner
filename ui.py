@@ -396,13 +396,13 @@ class UI:
         font_small = pygame.font.Font(None, 22)
         font_footer = pygame.font.Font(None, 20)
         
-        # Apply scroll offset to all drawing
-        base_y = 40 - scroll_offset
-        
-        # Title (fixed at top)
+        # Title (fixed at top, not affected by scroll)
         title = font_title.render("MazeRunner Tutorial", True, (33, 33, 33))
-        title_rect = title.get_rect(center=(WINDOW_WIDTH // 2, base_y))
+        title_rect = title.get_rect(center=(WINDOW_WIDTH // 2, 40))
         self.screen.blit(title, title_rect)
+        
+        # Apply scroll offset to content (not title or footer)
+        base_y = 40 - scroll_offset
         
         # Track actual content height (without scroll offset) for scroll calculation
         actual_y_offset = 100  # Starting position without scroll offset
@@ -698,8 +698,8 @@ class UI:
         actual_y_offset += section_spacing
         
         # Section 5: Controls & Features
-        heading4 = font_heading.render("CONTROLS & FEATURES", True, (255, 152, 0))
-        self.screen.blit(heading4, (50, y_offset))
+        heading5_controls = font_heading.render("CONTROLS & FEATURES", True, (255, 152, 0))
+        self.screen.blit(heading5_controls, (50, y_offset))
         y_offset += 35
         actual_y_offset += 35
         
@@ -716,13 +716,14 @@ class UI:
             ("ESC", "Quit or return to menu"),
         ]
         
-        # Two columns for controls
+        # Two columns for controls - wider columns to prevent wrapping
         col1_x = 70
-        col2_x = WINDOW_WIDTH // 2 + 20
-        col_width = 180
-        max_desc_width = (WINDOW_WIDTH // 2) - col2_x - col_width - 20  # Leave margin on right
+        col2_x = WINDOW_WIDTH // 2 + 10
+        col_width = 220  # Increased from 180
+        max_desc_width = WINDOW_WIDTH - col2_x - col_width - 30  # Leave margin on right
         
         mid_point = (len(controls) + 1) // 2
+        
         for i, (key, desc) in enumerate(controls):
             if i < mid_point:
                 # Left column
@@ -736,38 +737,17 @@ class UI:
             key_text = font_text.render(key, True, (63, 81, 181))
             self.screen.blit(key_text, (x_pos, y_pos))
             
-            # Wrap description if too long
+            # Description (no wrapping needed with wider columns)
             desc_full = f" - {desc}"
             desc_text = font_small.render(desc_full, True, (100, 100, 100))
-            if desc_text.get_width() > max_desc_width:
-                # Wrap text
-                words = desc.split()
-                lines = []
-                current_line = []
-                for word in words:
-                    test_line = ' '.join(current_line + [word])
-                    test_text = font_small.render(f" - {test_line}", True, (100, 100, 100))
-                    if test_text.get_width() <= max_desc_width:
-                        current_line.append(word)
-                    else:
-                        if current_line:
-                            lines.append(' '.join(current_line))
-                        current_line = [word]
-                if current_line:
-                    lines.append(' '.join(current_line))
-                
-                for j, line in enumerate(lines):
-                    line_text = font_small.render(f" - {line}" if j == 0 else f"   {line}", True, (100, 100, 100))
-                    self.screen.blit(line_text, (x_pos + col_width, y_pos + j * 18))
-            else:
-                self.screen.blit(desc_text, (x_pos + col_width, y_pos))
+            self.screen.blit(desc_text, (x_pos + col_width, y_pos))
         
-        y_offset += mid_point * 20 + section_spacing
-        actual_y_offset += mid_point * 20 + section_spacing
+        y_offset += mid_point * 22 + section_spacing
+        actual_y_offset += mid_point * 22 + section_spacing
         
         # Section 6: AI Algorithms & Visualization
-        heading5 = font_heading.render("AI ALGORITHMS & VISUALIZATION", True, (171, 71, 188))
-        self.screen.blit(heading5, (50, y_offset))
+        heading6_algo = font_heading.render("AI ALGORITHMS & VISUALIZATION", True, (171, 71, 188))
+        self.screen.blit(heading6_algo, (50, y_offset))
         y_offset += 35
         actual_y_offset += 35
         
@@ -820,8 +800,8 @@ class UI:
         actual_y_offset += section_spacing
         
         # Section 7: Game Modes (brief)
-        heading6 = font_heading.render("GAME MODES", True, (239, 83, 80))
-        self.screen.blit(heading6, (50, y_offset))
+        heading7_modes = font_heading.render("GAME MODES", True, (239, 83, 80))
+        self.screen.blit(heading7_modes, (50, y_offset))
         y_offset += 35
         actual_y_offset += 35
         
