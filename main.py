@@ -61,6 +61,7 @@ class Game:
         self.in_menu = True  # Whether we're currently in the main menu
                              # True = showing menu, False = playing game
         self.showing_tutorial = False  # Whether tutorial screen is displayed
+        self.tutorial_scroll_offset = 0  # Scroll offset for tutorial screen
                              
         self.game_state = None  # Current game state (None when in menu)
                                # Contains: maze, player, AI, game mode, etc.
@@ -119,8 +120,17 @@ class Game:
                 # In duel modes, the mazes might be taller than the screen, so we allow scrolling
                 duel_modes = ['AI Duel', 'Blind Duel']
                 
+                # Handle tutorial scrolling
+                if self.in_menu and self.showing_tutorial:
+                    # event.y is positive when scrolling up, negative when scrolling down
+                    scroll_amount = event.y * 30
+                    # Get max scroll from UI (will be calculated during drawing)
+                    max_scroll = getattr(self.ui, 'tutorial_max_scroll', 0)
+                    # Update scroll offset, but clamp it between 0 and max_scroll
+                    self.tutorial_scroll_offset = max(0, min(max_scroll, self.tutorial_scroll_offset - scroll_amount))
+                
                 # Only handle scrolling if we're in a duel mode (not in menu)
-                if not self.in_menu and self.game_state and self.game_state.mode in duel_modes:
+                elif not self.in_menu and self.game_state and self.game_state.mode in duel_modes:
                     # event.y is positive when scrolling up, negative when scrolling down
                     # Multiply by 30 pixels for smooth scrolling
                     scroll_amount = event.y * 30
@@ -144,11 +154,19 @@ class Game:
                 # Some systems don't support MOUSEWHEEL event, so we check button 4 and 5
                 if not self.in_menu and self.game_state and self.game_state.mode in duel_modes:
                     if event.button == 4:  # Mouse wheel scroll up
-                        self.scroll_offset = max(0, self.scroll_offset - 30)
-                        self.calculate_split_screen_offsets()
+                        if self.in_menu and self.showing_tutorial:
+                            max_scroll = getattr(self.ui, 'tutorial_max_scroll', 0)
+                            self.tutorial_scroll_offset = max(0, self.tutorial_scroll_offset - 30)
+                        else:
+                            self.scroll_offset = max(0, self.scroll_offset - 30)
+                            self.calculate_split_screen_offsets()
                     elif event.button == 5:  # Mouse wheel scroll down
-                        self.scroll_offset = min(self.max_scroll, self.scroll_offset + 30)
-                        self.calculate_split_screen_offsets()
+                        if self.in_menu and self.showing_tutorial:
+                            max_scroll = getattr(self.ui, 'tutorial_max_scroll', 0)
+                            self.tutorial_scroll_offset = min(max_scroll, self.tutorial_scroll_offset + 30)
+                        else:
+                            self.scroll_offset = min(self.max_scroll, self.scroll_offset + 30)
+                            self.calculate_split_screen_offsets()
                 
                 # Left mouse button click (button 1)
                 elif event.button == 1:
@@ -189,12 +207,14 @@ class Game:
                     # Tutorial toggle
                     if event.key == pygame.K_t:
                         self.showing_tutorial = not self.showing_tutorial
+                        self.tutorial_scroll_offset = 0  # Reset scroll when opening tutorial
                         continue
                     
                     # If showing tutorial, only allow ESC to go back
                     if self.showing_tutorial:
                         if event.key == pygame.K_ESCAPE:
                             self.showing_tutorial = False
+                            self.tutorial_scroll_offset = 0  # Reset scroll when closing
                         continue
                     
                     # Number keys 1-5 select game modes from the menu
@@ -520,7 +540,7 @@ class Game:
         if self.in_menu:
             # Draw tutorial screen if showing, otherwise draw main menu
             if self.showing_tutorial:
-                self.ui.draw_tutorial()
+                self.ui.draw_tutorial(self.tutorial_scroll_offset)
             else:
                 self.ui.draw_main_menu()
             

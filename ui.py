@@ -354,8 +354,34 @@ class UI:
         # Draw grid border
         pygame.draw.rect(self.screen, (200, 200, 200), cell_rect, 1)
     
-    def draw_tutorial(self):
-        """Draw tutorial screen explaining terrain vs obstacles"""
+    def draw_tutorial_scrollbar(self, scroll_offset):
+        """Draw scrollbar for tutorial screen"""
+        scrollbar_width = 15
+        scrollbar_x = WINDOW_WIDTH - scrollbar_width - 5
+        scrollbar_y = 5
+        scrollbar_height = WINDOW_HEIGHT - 60  # Leave space for footer
+        
+        # Draw scrollbar background (track)
+        track_rect = pygame.Rect(scrollbar_x, scrollbar_y, scrollbar_width, scrollbar_height)
+        pygame.draw.rect(self.screen, (200, 200, 200), track_rect, border_radius=8)
+        pygame.draw.rect(self.screen, (180, 180, 180), track_rect, 1, border_radius=8)
+        
+        # Calculate thumb size and position
+        total_height = self.tutorial_max_scroll + WINDOW_HEIGHT - 50
+        thumb_ratio = WINDOW_HEIGHT / total_height if total_height > 0 else 1
+        thumb_height = max(30, int(scrollbar_height * thumb_ratio))
+        
+        # Thumb position based on scroll offset
+        scroll_ratio = scroll_offset / self.tutorial_max_scroll if self.tutorial_max_scroll > 0 else 0
+        thumb_y = scrollbar_y + int((scrollbar_height - thumb_height) * scroll_ratio)
+        
+        # Draw scrollbar thumb
+        thumb_rect = pygame.Rect(scrollbar_x, thumb_y, scrollbar_width, thumb_height)
+        pygame.draw.rect(self.screen, (100, 100, 100), thumb_rect, border_radius=8)
+        pygame.draw.rect(self.screen, (80, 80, 80), thumb_rect, 1, border_radius=8)
+    
+    def draw_tutorial(self, scroll_offset=0):
+        """Draw comprehensive tutorial screen with game instructions"""
         # Background gradient (same as main menu)
         for y in range(0, WINDOW_HEIGHT, 4):
             progress = y / WINDOW_HEIGHT
@@ -364,134 +390,506 @@ class UI:
                            (0, y), (WINDOW_WIDTH, y), 4)
         
         # Fonts
-        font_title = pygame.font.Font(None, 72)
-        font_heading = pygame.font.Font(None, 40)
-        font_text = pygame.font.Font(None, 28)
-        font_small = pygame.font.Font(None, 24)
+        font_title = pygame.font.Font(None, 64)
+        font_heading = pygame.font.Font(None, 36)
+        font_text = pygame.font.Font(None, 26)
+        font_small = pygame.font.Font(None, 22)
         font_footer = pygame.font.Font(None, 20)
         
-        # Title
-        title = font_title.render("Terrain vs Obstacles Tutorial", True, (33, 33, 33))
-        title_rect = title.get_rect(center=(WINDOW_WIDTH // 2, 60))
+        # Apply scroll offset to all drawing
+        base_y = 40 - scroll_offset
+        
+        # Title (fixed at top)
+        title = font_title.render("MazeRunner Tutorial", True, (33, 33, 33))
+        title_rect = title.get_rect(center=(WINDOW_WIDTH // 2, base_y))
         self.screen.blit(title, title_rect)
         
-        y_offset = 140
-        cell_size = 40  # Size of example cells in tutorial
+        # Track actual content height (without scroll offset) for scroll calculation
+        actual_y_offset = 100  # Starting position without scroll offset
+        y_offset = base_y + 60
+        cell_size = 32  # Size of example cells in tutorial
+        section_spacing = 15
         
-        # Section 1: Terrain
-        heading1 = font_heading.render("TERRAIN (Grass, Water, Mud, Lava)", True, (76, 175, 80))
+        # Section 1: Game Overview
+        heading1 = font_heading.render("WHAT IS MAZERUNNER?", True, (63, 81, 181))
         self.screen.blit(heading1, (50, y_offset))
-        y_offset += 50
+        y_offset += 40
         
-        terrain_examples = [
-            ('GRASS', "Cost: 1 energy", "Fast, easy terrain - most common and cheapest"),
-            ('WATER', "Cost: 3 energy", "Slower to cross - 3x more expensive than grass"),
-            ('MUD', "Cost: 5 energy", "Very slow - 5x more expensive than grass"),
-            ('LAVA', "Cost: ∞ (infinite)", "Completely impassable - blocks all movement"),
+        overview_texts = [
+            "Navigate from START (green) to GOAL (gold) using the least energy possible.",
+            "Each terrain type costs different energy to cross - plan your path wisely!",
+            "Collect rewards (golden stars) for energy bonuses and special abilities.",
+            "Compete against AI algorithms to see who finds the optimal path."
         ]
         
-        for terrain_type, cost, description in terrain_examples:
-            # Draw visual cell
-            cell_x = 80
-            cell_y = y_offset
-            self.draw_tutorial_cell(cell_x, cell_y, cell_size, terrain_type)
-            
-            # Draw text next to cell
-            text_x = cell_x + cell_size + 20
-            name_text = font_text.render(f"{terrain_type}", True, (50, 50, 50))
-            self.screen.blit(name_text, (text_x, y_offset + 5))
-            
-            cost_text = font_small.render(cost, True, (100, 100, 100))
-            self.screen.blit(cost_text, (text_x, y_offset + 30))
-            
-            # Wrap description if too long
-            desc = font_small.render(description, True, (100, 100, 100))
-            desc_x = text_x + 180
-            if desc_x + desc.get_width() < WINDOW_WIDTH - 50:
-                self.screen.blit(desc, (desc_x, y_offset + 15))
-            else:
-                # Split description if needed
-                words = description.split()
-                line1 = ' '.join(words[:len(words)//2])
-                line2 = ' '.join(words[len(words)//2:])
-                desc1 = font_small.render(line1, True, (100, 100, 100))
-                desc2 = font_small.render(line2, True, (100, 100, 100))
-                self.screen.blit(desc1, (desc_x, y_offset + 5))
-                self.screen.blit(desc2, (desc_x, y_offset + 25))
-            
-            y_offset += 55
+        for text in overview_texts:
+            text_surf = font_small.render(f"• {text}", True, (60, 60, 60))
+            self.screen.blit(text_surf, (70, y_offset))
+            y_offset += 22
+            actual_y_offset += 22
         
-        y_offset += 20
+        y_offset += section_spacing
+        actual_y_offset += section_spacing
         
-        # Section 2: Obstacles (The Rest)
-        heading2 = font_heading.render("OBSTACLES (Spikes, Thorns, Quicksand, Rocks, Walls)", True, (255, 152, 0))
+        # Section 2: How to Move
+        heading2 = font_heading.render("HOW TO MOVE", True, (76, 175, 80))
         self.screen.blit(heading2, (50, y_offset))
-        y_offset += 50
+        y_offset += 35
+        actual_y_offset += 35
         
-        obstacles = [
-            ('SPIKES', "Cost: 4 energy", "Dangerous but passable - moderate cost"),
-            ('THORNS', "Cost: 3 energy", "Painful but passable - same cost as water"),
-            ('QUICKSAND', "Cost: 6 energy", "Very slow but passable - highest cost obstacle"),
-            ('ROCKS', "Cost: 2 energy", "Slightly difficult but passable - low cost"),
-            ('WALL', "Cost: ∞ (infinite)", "Maze boundaries - completely impassable"),
+        # Draw arrow key visualizations
+        key_size = 30
+        key_spacing = 50
+        start_x = 100
+        
+        # Arrow keys
+        arrow_keys = [
+            (pygame.K_UP, "↑", start_x + key_spacing, y_offset),
+            (pygame.K_LEFT, "←", start_x, y_offset + key_spacing),
+            (pygame.K_DOWN, "↓", start_x + key_spacing, y_offset + key_spacing),
+            (pygame.K_RIGHT, "→", start_x + key_spacing * 2, y_offset + key_spacing),
         ]
         
-        for obs_type, cost, description in obstacles:
-            # Draw visual cell
-            cell_x = 80
-            cell_y = y_offset
-            self.draw_tutorial_cell(cell_x, cell_y, cell_size, obs_type)
+        for key, symbol, x, y in arrow_keys:
+            key_rect = pygame.Rect(x, y, key_size, key_size)
+            pygame.draw.rect(self.screen, (220, 220, 220), key_rect, border_radius=5)
+            pygame.draw.rect(self.screen, (180, 180, 180), key_rect, 2, border_radius=5)
+            key_text = font_text.render(symbol, True, (50, 50, 50))
+            text_rect = key_text.get_rect(center=key_rect.center)
+            self.screen.blit(key_text, text_rect)
+        
+        # WASD keys
+        wasd_x = start_x + key_spacing * 4
+        wasd_keys = [
+            ("W", wasd_x + key_spacing, y_offset),
+            ("A", wasd_x, y_offset + key_spacing),
+            ("S", wasd_x + key_spacing, y_offset + key_spacing),
+            ("D", wasd_x + key_spacing * 2, y_offset + key_spacing),
+        ]
+        
+        for key, x, y in wasd_keys:
+            key_rect = pygame.Rect(x, y, key_size, key_size)
+            pygame.draw.rect(self.screen, (220, 220, 220), key_rect, border_radius=5)
+            pygame.draw.rect(self.screen, (180, 180, 180), key_rect, 2, border_radius=5)
+            key_text = font_small.render(key, True, (50, 50, 50))
+            text_rect = key_text.get_rect(center=key_rect.center)
+            self.screen.blit(key_text, text_rect)
+        
+        move_text = font_small.render("Use Arrow Keys or WASD to move in four directions", True, (60, 60, 60))
+        self.screen.blit(move_text, (70, y_offset + key_spacing * 2 + 10))
+        y_offset += key_spacing * 2 + 30
+        actual_y_offset += key_spacing * 2 + 30
+        
+        y_offset += section_spacing
+        actual_y_offset += section_spacing
+        
+        # Section 3: Terrain vs Obstacles
+        heading3 = font_heading.render("TERRAIN & OBSTACLES", True, (76, 175, 80))
+        self.screen.blit(heading3, (50, y_offset))
+        y_offset += 40
+        actual_y_offset += 40
+        
+        # Terrain examples (compact)
+        terrain_examples = [
+            ('GRASS', "Cost: 1", "Cheapest"),
+            ('WATER', "Cost: 3", "Moderate"),
+            ('MUD', "Cost: 5", "Expensive"),
+        ]
+        
+        cell_x = 70
+        cell_spacing = min(120, (WINDOW_WIDTH - 140 - cell_size * 4) // 4)  # Ensure cells fit on screen
+        for i, (terrain_type, cost, desc) in enumerate(terrain_examples):
+            x_pos = cell_x + i * cell_spacing
+            self.draw_tutorial_cell(x_pos, y_offset, cell_size, terrain_type)
+            cost_text = font_small.render(cost, True, (60, 60, 60))
+            self.screen.blit(cost_text, (x_pos + 5, y_offset + cell_size + 5))
+            desc_text = font_small.render(desc, True, (100, 100, 100))
+            # Center description text under cell
+            desc_rect = desc_text.get_rect(centerx=x_pos + cell_size // 2)
+            self.screen.blit(desc_text, (desc_rect.x, y_offset + cell_size + 20))
+        
+        # Lava (impassable)
+        lava_x = cell_x + 3 * cell_spacing
+        self.draw_tutorial_cell(lava_x, y_offset, cell_size, 'LAVA')
+        cost_text = font_small.render("∞", True, (200, 0, 0))
+        self.screen.blit(cost_text, (lava_x + 10, y_offset + cell_size + 5))
+        desc_text = font_small.render("Impassable", True, (200, 0, 0))
+        desc_rect = desc_text.get_rect(centerx=lava_x + cell_size // 2)
+        self.screen.blit(desc_text, (desc_rect.x, y_offset + cell_size + 20))
+        
+        # Account for cell height + labels below
+        y_offset += cell_size + 35
+        actual_y_offset += cell_size + 35
+        
+        # Obstacles (compact)
+        obstacle_examples = [
+            ('SPIKES', "Cost: 4"),
+            ('THORNS', "Cost: 3"),
+            ('QUICKSAND', "Cost: 6"),
+            ('ROCKS', "Cost: 2"),
+        ]
+        
+        for i, (obs_type, cost) in enumerate(obstacle_examples):
+            x_pos = cell_x + i * cell_spacing
+            self.draw_tutorial_cell(x_pos, y_offset, cell_size, obs_type)
+            cost_text = font_small.render(cost, True, (60, 60, 60))
+            self.screen.blit(cost_text, (x_pos + 5, y_offset + cell_size + 5))
+        
+        y_offset += cell_size + 30
+        actual_y_offset += cell_size + 30
+        
+        y_offset += section_spacing
+        actual_y_offset += section_spacing
+        
+        # Section 4: Rewards & Checkpoints
+        heading4_rewards = font_heading.render("REWARDS & CHECKPOINTS", True, (255, 193, 7))
+        self.screen.blit(heading4_rewards, (50, y_offset))
+        y_offset += 35
+        actual_y_offset += 35
+        
+        # Rewards explanation
+        reward_label = font_text.render("REWARDS (Golden Stars)", True, (255, 193, 7))
+        self.screen.blit(reward_label, (70, y_offset))
+        y_offset += 30
+        actual_y_offset += 30
+        
+        # Draw reward visual
+        reward_x = 80
+        reward_y = y_offset
+        reward_cell_rect = pygame.Rect(reward_x, reward_y, cell_size, cell_size)
+        pygame.draw.rect(self.screen, COLORS['REWARD'], reward_cell_rect)
+        # Draw star
+        import math
+        center_x, center_y = reward_cell_rect.centerx, reward_cell_rect.centery
+        outer_radius = cell_size // 3
+        inner_radius = outer_radius // 2
+        points = []
+        for i in range(10):
+            angle = (i * math.pi / 5) - (math.pi / 2)
+            if i % 2 == 0:
+                px = center_x + int(outer_radius * math.cos(angle))
+                py = center_y + int(outer_radius * math.sin(angle))
+            else:
+                px = center_x + int(inner_radius * math.cos(angle))
+                py = center_y + int(inner_radius * math.sin(angle))
+            points.append((px, py))
+        if len(points) >= 3:
+            pygame.draw.polygon(self.screen, COLORS['REWARD_DARK'], points)
+            pygame.draw.polygon(self.screen, (255, 255, 255), points, 1)
+        pygame.draw.rect(self.screen, (200, 200, 200), reward_cell_rect, 1)
+        
+        reward_info = [
+            "• Appear as golden stars on the maze",
+            "• Free to collect (no energy cost)",
+            "• Give -2 energy cost bonus for next 5 moves",
+            "• Example: Water (cost 3) becomes cost 1 with active reward",
+            "• In Blind Duel mode: Increase visibility radius"
+        ]
+        
+        info_start_x = reward_x + cell_size + 20
+        max_text_width = WINDOW_WIDTH - info_start_x - 20  # Leave 20px margin on right
+        
+        for info in reward_info:
+            info_text = font_small.render(info, True, (60, 60, 60))
+            # Check if text fits, if not wrap it
+            if info_text.get_width() > max_text_width:
+                # Simple word wrapping
+                words = info.split()
+                lines = []
+                current_line = []
+                for word in words:
+                    test_line = ' '.join(current_line + [word])
+                    test_text = font_small.render(test_line, True, (60, 60, 60))
+                    if test_text.get_width() <= max_text_width:
+                        current_line.append(word)
+                    else:
+                        if current_line:
+                            lines.append(' '.join(current_line))
+                        current_line = [word]
+                if current_line:
+                    lines.append(' '.join(current_line))
+                
+                for line in lines:
+                    line_text = font_small.render(line, True, (60, 60, 60))
+                    self.screen.blit(line_text, (info_start_x, y_offset))
+                    y_offset += 18
+                    actual_y_offset += 18
+            else:
+                self.screen.blit(info_text, (info_start_x, y_offset))
+                y_offset += 20
+                actual_y_offset += 20
+        
+        y_offset += 15
+        actual_y_offset += 15
+        
+        # Checkpoints explanation
+        checkpoint_label = font_text.render("CHECKPOINTS (Orange Stars)", True, (255, 167, 38))
+        self.screen.blit(checkpoint_label, (70, y_offset))
+        y_offset += 30
+        actual_y_offset += 30
+        
+        # Draw checkpoint visual
+        checkpoint_x = 80
+        checkpoint_y = y_offset
+        checkpoint_cell_rect = pygame.Rect(checkpoint_x, checkpoint_y, cell_size, cell_size)
+        pygame.draw.rect(self.screen, COLORS['CHECKPOINT'], checkpoint_cell_rect)
+        # Draw star
+        center_x, center_y = checkpoint_cell_rect.centerx, checkpoint_cell_rect.centery
+        outer_radius = cell_size // 3
+        inner_radius = outer_radius // 2
+        points = []
+        for i in range(10):
+            angle = (i * math.pi / 5) - (math.pi / 2)
+            if i % 2 == 0:
+                px = center_x + int(outer_radius * math.cos(angle))
+                py = center_y + int(outer_radius * math.sin(angle))
+            else:
+                px = center_x + int(inner_radius * math.cos(angle))
+                py = center_y + int(inner_radius * math.sin(angle))
+            points.append((px, py))
+        if len(points) >= 3:
+            pygame.draw.polygon(self.screen, COLORS['CHECKPOINT_DARK'], points)
+            pygame.draw.polygon(self.screen, (255, 255, 255), points, 1)
+        pygame.draw.rect(self.screen, (200, 200, 200), checkpoint_cell_rect, 1)
+        
+        checkpoint_info = [
+            "• Appear as orange stars on the maze",
+            "• Free to visit (no energy cost)",
+            "• Required in Multi-Goal and AI Duel modes",
+            "• Must visit ALL checkpoints before reaching goal",
+            "• Order matters - AI finds optimal checkpoint sequence"
+        ]
+        
+        # Account for cell height - info starts at same y as cell
+        info_start_x = checkpoint_x + cell_size + 20
+        max_text_width = WINDOW_WIDTH - info_start_x - 20  # Leave 20px margin on right
+        
+        for info in checkpoint_info:
+            info_text = font_small.render(info, True, (60, 60, 60))
+            # Check if text fits, if not wrap it
+            if info_text.get_width() > max_text_width:
+                # Simple word wrapping
+                words = info.split()
+                lines = []
+                current_line = []
+                for word in words:
+                    test_line = ' '.join(current_line + [word])
+                    test_text = font_small.render(test_line, True, (60, 60, 60))
+                    if test_text.get_width() <= max_text_width:
+                        current_line.append(word)
+                    else:
+                        if current_line:
+                            lines.append(' '.join(current_line))
+                        current_line = [word]
+                if current_line:
+                    lines.append(' '.join(current_line))
+                
+                for line in lines:
+                    line_text = font_small.render(line, True, (60, 60, 60))
+                    self.screen.blit(line_text, (info_start_x, y_offset))
+                    y_offset += 18
+                    actual_y_offset += 18
+            else:
+                self.screen.blit(info_text, (info_start_x, y_offset))
+                y_offset += 20
+                actual_y_offset += 20
+        
+        y_offset += section_spacing
+        actual_y_offset += section_spacing
+        
+        # Section 5: Controls & Features
+        heading4 = font_heading.render("CONTROLS & FEATURES", True, (255, 152, 0))
+        self.screen.blit(heading4, (50, y_offset))
+        y_offset += 35
+        actual_y_offset += 35
+        
+        controls = [
+            ("R", "Reset current game"),
+            ("G", "Generate new maze"),
+            ("U", "Undo last move (costs 2 energy)"),
+            ("H", "Toggle hints (shows AI's suggested next move)"),
+            ("V", "Toggle exploration visualization"),
+            ("C", "Show algorithm comparison dashboard"),
+            ("[ ]", "Cycle through AI algorithms"),
+            ("1-5", "Switch game modes"),
+            ("M", "Return to main menu"),
+            ("ESC", "Quit or return to menu"),
+        ]
+        
+        # Two columns for controls
+        col1_x = 70
+        col2_x = WINDOW_WIDTH // 2 + 20
+        col_width = 180
+        max_desc_width = (WINDOW_WIDTH // 2) - col2_x - col_width - 20  # Leave margin on right
+        
+        mid_point = (len(controls) + 1) // 2
+        for i, (key, desc) in enumerate(controls):
+            if i < mid_point:
+                # Left column
+                x_pos = col1_x
+                y_pos = y_offset + i * 22
+            else:
+                # Right column
+                x_pos = col2_x
+                y_pos = y_offset + (i - mid_point) * 22
             
-            # Draw text next to cell
-            text_x = cell_x + cell_size + 20
-            name_text = font_text.render(f"{obs_type}", True, (50, 50, 50))
-            self.screen.blit(name_text, (text_x, y_offset + 5))
-            
-            cost_text = font_small.render(cost, True, (100, 100, 100))
-            self.screen.blit(cost_text, (text_x, y_offset + 30))
+            key_text = font_text.render(key, True, (63, 81, 181))
+            self.screen.blit(key_text, (x_pos, y_pos))
             
             # Wrap description if too long
-            desc = font_small.render(description, True, (100, 100, 100))
-            desc_x = text_x + 180
-            if desc_x + desc.get_width() < WINDOW_WIDTH - 50:
-                self.screen.blit(desc, (desc_x, y_offset + 15))
+            desc_full = f" - {desc}"
+            desc_text = font_small.render(desc_full, True, (100, 100, 100))
+            if desc_text.get_width() > max_desc_width:
+                # Wrap text
+                words = desc.split()
+                lines = []
+                current_line = []
+                for word in words:
+                    test_line = ' '.join(current_line + [word])
+                    test_text = font_small.render(f" - {test_line}", True, (100, 100, 100))
+                    if test_text.get_width() <= max_desc_width:
+                        current_line.append(word)
+                    else:
+                        if current_line:
+                            lines.append(' '.join(current_line))
+                        current_line = [word]
+                if current_line:
+                    lines.append(' '.join(current_line))
+                
+                for j, line in enumerate(lines):
+                    line_text = font_small.render(f" - {line}" if j == 0 else f"   {line}", True, (100, 100, 100))
+                    self.screen.blit(line_text, (x_pos + col_width, y_pos + j * 18))
             else:
-                # Split description if needed
-                words = description.split()
-                line1 = ' '.join(words[:len(words)//2])
-                line2 = ' '.join(words[len(words)//2:])
-                desc1 = font_small.render(line1, True, (100, 100, 100))
-                desc2 = font_small.render(line2, True, (100, 100, 100))
-                self.screen.blit(desc1, (desc_x, y_offset + 5))
-                self.screen.blit(desc2, (desc_x, y_offset + 25))
+                self.screen.blit(desc_text, (x_pos + col_width, y_pos))
+        
+        y_offset += mid_point * 20 + section_spacing
+        actual_y_offset += mid_point * 20 + section_spacing
+        
+        # Section 6: AI Algorithms & Visualization
+        heading5 = font_heading.render("AI ALGORITHMS & VISUALIZATION", True, (171, 71, 188))
+        self.screen.blit(heading5, (50, y_offset))
+        y_offset += 35
+        actual_y_offset += 35
+        
+        algo_info = [
+            ("[ ] Keys", "Cycle through: BFS → Dijkstra → A* → Bidirectional A*"),
+            ("V Key", "See which cells the AI explored (yellow) and frontier (orange)"),
+            ("H Key", "See AI's suggested next move (golden arrow)"),
+            ("C Key", "Compare all algorithms side-by-side (cost, nodes, time)"),
+        ]
+        
+        algo_key_width = 150
+        algo_desc_start = 70 + algo_key_width
+        max_algo_desc_width = WINDOW_WIDTH - algo_desc_start - 20  # Leave margin on right
+        
+        for key, desc in algo_info:
+            key_text = font_text.render(key, True, (171, 71, 188))
+            self.screen.blit(key_text, (70, y_offset))
             
-            y_offset += 55
+            # Wrap description if too long
+            desc_full = f" - {desc}"
+            desc_text = font_small.render(desc_full, True, (100, 100, 100))
+            if desc_text.get_width() > max_algo_desc_width:
+                # Wrap text
+                words = desc.split()
+                lines = []
+                current_line = []
+                for word in words:
+                    test_line = ' '.join(current_line + [word])
+                    test_text = font_small.render(f" - {test_line}", True, (100, 100, 100))
+                    if test_text.get_width() <= max_algo_desc_width:
+                        current_line.append(word)
+                    else:
+                        if current_line:
+                            lines.append(' '.join(current_line))
+                        current_line = [word]
+                if current_line:
+                    lines.append(' '.join(current_line))
+                
+                for j, line in enumerate(lines):
+                    line_text = font_small.render(f" - {line}" if j == 0 else f"   {line}", True, (100, 100, 100))
+                    self.screen.blit(line_text, (algo_desc_start, y_offset + j * 18))
+                y_offset += len(lines) * 18
+                actual_y_offset += len(lines) * 18
+            else:
+                self.screen.blit(desc_text, (algo_desc_start, y_offset))
+                y_offset += 22
+                actual_y_offset += 22
         
-        y_offset += 30
+        y_offset += section_spacing
+        actual_y_offset += section_spacing
         
-        # Key Differences Box
-        box_rect = pygame.Rect(50, y_offset, WINDOW_WIDTH - 100, 120)
-        pygame.draw.rect(self.screen, (240, 240, 240), box_rect, border_radius=10)
-        pygame.draw.rect(self.screen, (200, 200, 200), box_rect, 2, border_radius=10)
+        # Section 7: Game Modes (brief)
+        heading6 = font_heading.render("GAME MODES", True, (239, 83, 80))
+        self.screen.blit(heading6, (50, y_offset))
+        y_offset += 35
+        actual_y_offset += 35
         
-        key_heading = font_heading.render("Key Differences", True, (33, 33, 33))
-        self.screen.blit(key_heading, (70, y_offset + 10))
+        modes = [
+            ("1. Explore", "Learn pathfinding - no time pressure"),
+            ("2. Obstacle Course", "Dynamic obstacles change each turn"),
+            ("3. Multi-Goal", "Visit 3 checkpoints before the goal"),
+            ("4. AI Duel", "Race against AI in turn-based competition"),
+            ("5. Blind Duel", "Fog of War - limited visibility"),
+        ]
         
-        diff_text1 = font_text.render("• TERRAIN: Grass, Water, Mud, and Lava - basic terrain types", True, (50, 50, 50))
-        self.screen.blit(diff_text1, (70, y_offset + 50))
+        mode_key_width = 120
+        mode_desc_start = 70 + mode_key_width
+        max_mode_desc_width = WINDOW_WIDTH - mode_desc_start - 20  # Leave margin on right
         
-        diff_text2 = font_text.render("• OBSTACLES: Everything else - Spikes, Thorns, Quicksand, Rocks, Walls", True, (50, 50, 50))
-        self.screen.blit(diff_text2, (70, y_offset + 75))
+        for mode, desc in modes:
+            mode_text = font_text.render(mode, True, (239, 83, 80))
+            self.screen.blit(mode_text, (70, y_offset))
+            
+            # Wrap description if too long
+            desc_full = f" - {desc}"
+            desc_text = font_small.render(desc_full, True, (100, 100, 100))
+            if desc_text.get_width() > max_mode_desc_width:
+                # Wrap text
+                words = desc.split()
+                lines = []
+                current_line = []
+                for word in words:
+                    test_line = ' '.join(current_line + [word])
+                    test_text = font_small.render(f" - {test_line}", True, (100, 100, 100))
+                    if test_text.get_width() <= max_mode_desc_width:
+                        current_line.append(word)
+                    else:
+                        if current_line:
+                            lines.append(' '.join(current_line))
+                        current_line = [word]
+                if current_line:
+                    lines.append(' '.join(current_line))
+                
+                for j, line in enumerate(lines):
+                    line_text = font_small.render(f" - {line}" if j == 0 else f"   {line}", True, (100, 100, 100))
+                    self.screen.blit(line_text, (mode_desc_start, y_offset + j * 18))
+                y_offset += len(lines) * 18
+                actual_y_offset += len(lines) * 18
+            else:
+                self.screen.blit(desc_text, (mode_desc_start, y_offset))
+                y_offset += 22
+                actual_y_offset += 22
         
-        diff_text3 = font_text.render("• Both can be passable (with costs) or impassable (infinite cost)", True, (50, 50, 50))
-        self.screen.blit(diff_text3, (70, y_offset + 100))
+        # Calculate total content height for scrolling
+        # Use actual_y_offset which tracks content height without scroll offset
+        # The final y_offset includes scroll_offset, so we need to calculate from actual_y_offset
+        # Add footer space (30) and some padding
+        total_content_height = actual_y_offset + 30 + 20
+        # Max scroll is how much we can scroll down (content height - visible height)
+        # We need to allow scrolling until the bottom of content reaches the bottom of screen
+        self.tutorial_max_scroll = max(0, total_content_height - WINDOW_HEIGHT + 100)
         
-        # Footer
-        footer_y = WINDOW_HEIGHT - 40
-        footer_text = "Press ESC or T to return to main menu"
+        # Footer (fixed at bottom)
+        footer_y = WINDOW_HEIGHT - 30
+        footer_text = "Press ESC or T to return | Scroll with mouse wheel"
         footer = font_footer.render(footer_text, True, (120, 120, 120))
         footer_rect = footer.get_rect(center=(WINDOW_WIDTH // 2, footer_y))
         self.screen.blit(footer, footer_rect)
+        
+        # Draw scrollbar if needed
+        if self.tutorial_max_scroll > 0:
+            self.draw_tutorial_scrollbar(scroll_offset)
     
     def draw_ui_panel(self, game_state):
         """Draw the right-side UI panel with modern styling"""
