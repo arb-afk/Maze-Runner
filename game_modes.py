@@ -182,6 +182,11 @@ class GameState:
         # INITIALIZE FOG OF WAR (Blind Duel Mode)
         # ====================================================================
         # In Blind Duel mode, visibility is limited
+        # Clear discovered cells from previous game (important when resetting or generating new maze)
+        if self.fog_of_war_enabled:
+            self.player_discovered_cells = set()
+            self.ai_discovered_cells = set()
+        
         # We need to mark the starting area as discovered
         if self.fog_of_war_enabled and self.player:
             # Update discovered cells based on visibility radius
@@ -1093,6 +1098,9 @@ class GameState:
         mode = self.mode
         algo = self.algorithm_comparison
         hints = self.show_hints
+        # Clear fog of war discovered cells before resetting
+        self.player_discovered_cells = set()
+        self.ai_discovered_cells = set()
         self.initialize_game()
         self.mode = mode
         self.algorithm_comparison = algo
