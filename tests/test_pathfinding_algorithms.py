@@ -130,8 +130,8 @@ def test_heuristic_values():
     start = (0, 0)
     goal = (10, 10)
     
-    h_manhattan = pf_manhattan._heuristic(start, goal)
-    h_euclidean = pf_euclidean._heuristic(start, goal)
+    h_manhattan = pf_manhattan.heuristic(start[0], start[1], goal[0], goal[1])
+    h_euclidean = pf_euclidean.heuristic(start[0], start[1], goal[0], goal[1])
     
     # Manhattan should be |0-10| + |0-10| = 20
     assert h_manhattan == 20, f"Manhattan heuristic should be 20, got {h_manhattan}"
@@ -155,26 +155,46 @@ def test_multi_objective_search():
     maze = Maze(width=31, height=23)
     maze.assign_terrain(include_obstacles=True)
     
-    # Add checkpoints
-    maze.checkpoints = [(10, 5), (20, 15), (25, 8)]
-    
+    # Find valid passable cells for checkpoints (not obstacles, reachable)
+    pf = Pathfinder(maze, 'MANHATTAN')
     start = maze.start_pos
     goal = maze.goal_pos
     
-    pf = Pathfinder(maze, 'MANHATTAN')
-    result = pf.multi_objective_search(start, goal, maze.checkpoints)
+    # Find reachable cells for checkpoints
+    valid_checkpoints = []
+    for y in range(5, maze.height - 5, 5):  # Sample cells
+        for x in range(5, maze.width - 5, 5):
+            if maze.is_passable(x, y):
+                # Check if reachable from start
+                test_result = pf.bfs(start, (x, y))
+                if test_result.path_found:
+                    valid_checkpoints.append((x, y))
+                    if len(valid_checkpoints) >= 3:
+                        break
+        if len(valid_checkpoints) >= 3:
+            break
     
-    if result.path_found:
-        # Check that all checkpoints are in the path
-        path_set = set(result.path)
-        for checkpoint in maze.checkpoints:
-            assert checkpoint in path_set, \
-                f"Checkpoint {checkpoint} not found in path"
+    if len(valid_checkpoints) >= 3:
+        maze.checkpoints = valid_checkpoints[:3]
         
-        print(f"  PASS: Found path visiting all {len(maze.checkpoints)} checkpoints")
-        print(f"  PASS: Path length: {len(result.path)} steps")
+        # multi_objective_search takes: start, goals (list), discovered_cells
+        # goals should include all checkpoints + final goal
+        all_goals = list(maze.checkpoints) + [goal]
+        result = pf.multi_objective_search(start, all_goals)
+        
+        if result.path_found:
+            # Check that all checkpoints are in the path
+            path_set = set(result.path)
+            for checkpoint in maze.checkpoints:
+                assert checkpoint in path_set, \
+                    f"Checkpoint {checkpoint} not found in path"
+            
+            print(f"  PASS: Found path visiting all {len(maze.checkpoints)} checkpoints")
+            print(f"  PASS: Path length: {len(result.path)} steps")
+        else:
+            print("  WARNING: No path found (may be due to obstacle placement)")
     else:
-        print("  WARNING: No path found (may be due to obstacle placement)")
+        print("  WARNING: Could not find enough reachable checkpoint positions")
     
     print("PASS: Multi-objective search test passed\n")
 

@@ -4,9 +4,10 @@ Measures accuracy, execution time, nodes explored, and path costs.
 """
 
 import sys
+import os
 import time
 import statistics
-sys.path.insert(0, '.')
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from maze import Maze
 from pathfinding import Pathfinder

@@ -813,9 +813,9 @@ class UI:
             ("5. Blind Duel", "Fog of War - limited visibility"),
         ]
         
-        mode_key_width = 120
+        mode_key_width = 180  # Increased further to give even more space for mode names
         mode_desc_start = 70 + mode_key_width
-        max_mode_desc_width = WINDOW_WIDTH - mode_desc_start - 20  # Leave margin on right
+        max_mode_desc_width = WINDOW_WIDTH - mode_desc_start - 40  # Leave even more margin on right
         
         for mode, desc in modes:
             mode_text = font_text.render(mode, True, (239, 83, 80))

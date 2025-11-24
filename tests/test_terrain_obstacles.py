@@ -4,7 +4,8 @@ This test confirms the behavior I explained earlier.
 """
 
 import sys
-sys.path.insert(0, '.')
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from maze import Maze
 from config import TERRAIN_COSTS

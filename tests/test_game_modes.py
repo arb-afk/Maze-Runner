@@ -35,8 +35,7 @@ def test_obstacle_course_mode():
     """Test Obstacle Course mode setup"""
     print("Testing Obstacle Course mode...")
     
-    game_state = GameState()
-    game_state.setup_obstacle_course_mode()
+    game_state = GameState(mode='Obstacle Course')
     
     assert game_state.mode == 'Obstacle Course', "Mode should be 'Obstacle Course'"
     assert game_state.maze is not None, "Maze should be created"
@@ -58,8 +57,7 @@ def test_multigoal_mode():
     """Test Multi-Goal mode setup"""
     print("Testing Multi-Goal mode...")
     
-    game_state = GameState()
-    game_state.setup_multigoal_mode()
+    game_state = GameState(mode='Multi-Goal')
     
     assert game_state.mode == 'Multi-Goal', "Mode should be 'Multi-Goal'"
     assert game_state.maze is not None, "Maze should be created"
@@ -79,8 +77,7 @@ def test_ai_duel_mode():
     """Test AI Duel mode setup"""
     print("Testing AI Duel mode...")
     
-    game_state = GameState()
-    game_state.setup_ai_duel_mode()
+    game_state = GameState(mode='AI Duel')
     
     assert game_state.mode == 'AI Duel', "Mode should be 'AI Duel'"
     assert game_state.maze is not None, "Maze should be created"
@@ -95,8 +92,7 @@ def test_blind_duel_mode():
     """Test Blind Duel mode setup"""
     print("Testing Blind Duel mode...")
     
-    game_state = GameState()
-    game_state.setup_blind_duel_mode()
+    game_state = GameState(mode='Blind Duel')
     
     assert game_state.mode == 'Blind Duel', "Mode should be 'Blind Duel'"
     assert game_state.maze is not None, "Maze should be created"
