@@ -183,9 +183,11 @@ class GameState:
         # ====================================================================
         # In Blind Duel mode, visibility is limited
         # Clear discovered cells from previous game (important when resetting or generating new maze)
+        # Reset visibility radius to default (rewards from previous game shouldn't carry over)
         if self.fog_of_war_enabled:
             self.player_discovered_cells = set()
             self.ai_discovered_cells = set()
+            self.player_visibility_radius = 2  # Reset to default (rewards increase this during gameplay)
         
         # We need to mark the starting area as discovered
         if self.fog_of_war_enabled and self.player:

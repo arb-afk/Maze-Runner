@@ -1,5 +1,5 @@
 """
-MazeRunner - Main Game Loop
+MazeRunner X - Main Game Loop
 The Intelligent Shortest Path Challenge
 
 This is the main entry point for the game. The Game class manages:
@@ -44,7 +44,7 @@ class Game:
         self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
         
         # Set the window title (shown in the title bar)
-        pygame.display.set_caption("MazeRunner - The Intelligent Shortest Path Challenge")
+        pygame.display.set_caption("MazeRunner X - The Intelligent Shortest Path Challenge")
         
         # Create a clock object to control frame rate (FPS)
         # This ensures the game runs at consistent speed (60 FPS)
@@ -60,14 +60,18 @@ class Game:
         
         self.in_menu = True  # Whether we're currently in the main menu
                              # True = showing menu, False = playing game
-        self.showing_tutorial = False  # Whether tutorial screen is displayed
-        self.tutorial_scroll_offset = 0  # Scroll offset for tutorial screen
+                             
+        self.showing_tutorial = False  # Whether we're showing the tutorial screen
+                                       # True = showing tutorial, False = not showing
                              
         self.game_state = None  # Current game state (None when in menu)
                                # Contains: maze, player, AI, game mode, etc.
                                # Created when a game mode is selected
                                
         self.ui = UI(self.screen)  # UI renderer - handles drawing menus, stats, etc.
+        
+        # Tutorial scroll offset
+        self.tutorial_scroll_offset = 0
         
         # ====================================================================
         # MAZE POSITIONING CALCULATIONS
@@ -113,41 +117,32 @@ class Game:
                 self.running = False  # Set flag to exit game loop
             
             # ====================================================================
-            # MOUSE WHEEL SCROLLING (for split-screen modes)
+            # MOUSE WHEEL SCROLLING (for split-screen modes and tutorial)
             # ====================================================================
             elif event.type == pygame.MOUSEWHEEL:
-                # Mouse wheel scrolling for split-screen view in AI Duel modes
-                # In duel modes, the mazes might be taller than the screen, so we allow scrolling
-                duel_modes = ['AI Duel', 'Blind Duel']
-                
-                # Handle tutorial scrolling
-                if self.in_menu and self.showing_tutorial:
+                # Mouse wheel scrolling for tutorial
+                if self.showing_tutorial:
                     # event.y is positive when scrolling up, negative when scrolling down
+                    # Multiply by 30 pixels for smooth scrolling
                     scroll_amount = event.y * 30
-                    # Get max scroll from UI (will be calculated during drawing)
+                    # Update tutorial scroll offset
                     max_scroll = getattr(self.ui, 'tutorial_max_scroll', 0)
-                    # Update scroll offset, but clamp it between 0 and max_scroll
                     self.tutorial_scroll_offset = max(0, min(max_scroll, self.tutorial_scroll_offset - scroll_amount))
                 
-                # Only handle scrolling if we're in a duel mode (not in menu)
-                elif not self.in_menu and self.game_state and self.game_state.mode in duel_modes:
+                # Mouse wheel scrolling for split-screen view in AI Duel modes
+                # In duel modes, the mazes might be taller than the screen, so we allow scrolling
+                elif not self.in_menu and self.game_state and self.game_state.mode in ['AI Duel', 'Blind Duel']:
                     # event.y is positive when scrolling up, negative when scrolling down
-                    # Use same scroll amount as tutorial for consistency (30 pixels)
+                    # Multiply by 30 pixels for smooth scrolling
                     scroll_amount = event.y * 30
                     
-                    # Calculate new scroll offset
-                    new_scroll_offset = max(0, min(self.max_scroll, self.scroll_offset - scroll_amount))
+                    # Update scroll offset, but clamp it between 0 and max_scroll
+                    # max(0, ...) prevents scrolling above the top
+                    # min(..., self.max_scroll) prevents scrolling below the bottom
+                    self.scroll_offset = max(0, min(self.max_scroll, self.scroll_offset - scroll_amount))
                     
-                    # Only recalculate if scroll actually changed (avoid unnecessary work)
-                    if abs(new_scroll_offset - self.scroll_offset) > 0.1:
-                        self.scroll_offset = new_scroll_offset
-                        # Only recalculate positions, not the entire split screen setup
-                        # (max_scroll and dimensions don't change during scrolling)
-                        header_space = 80
-                        actual_maze_height = MAZE_HEIGHT * self.split_cell_size
-                        spacing = 30
-                        self.top_maze_y = header_space - self.scroll_offset
-                        self.bottom_maze_y = header_space + actual_maze_height + spacing - self.scroll_offset
+                    # Recalculate maze positions based on new scroll offset
+                    self.calculate_split_screen_offsets()
             
             # ====================================================================
             # MOUSE BUTTON CLICKS
@@ -158,45 +153,32 @@ class Game:
                 
                 # Mouse wheel button scrolling (fallback for older pygame versions)
                 # Some systems don't support MOUSEWHEEL event, so we check button 4 and 5
-                if not self.in_menu and self.game_state and self.game_state.mode in duel_modes:
+                if self.showing_tutorial:
+                    max_scroll = getattr(self.ui, 'tutorial_max_scroll', 0)
                     if event.button == 4:  # Mouse wheel scroll up
-                        if self.in_menu and self.showing_tutorial:
-                            max_scroll = getattr(self.ui, 'tutorial_max_scroll', 0)
-                            self.tutorial_scroll_offset = max(0, self.tutorial_scroll_offset - 15)
-                        elif not self.in_menu and self.game_state and self.game_state.mode in duel_modes:
-                            new_scroll_offset = max(0, self.scroll_offset - 30)
-                            if abs(new_scroll_offset - self.scroll_offset) > 0.1:
-                                self.scroll_offset = new_scroll_offset
-                                header_space = 80
-                                actual_maze_height = MAZE_HEIGHT * self.split_cell_size
-                                spacing = 30
-                                self.top_maze_y = header_space - self.scroll_offset
-                                self.bottom_maze_y = header_space + actual_maze_height + spacing - self.scroll_offset
+                        self.tutorial_scroll_offset = max(0, self.tutorial_scroll_offset - 30)
                     elif event.button == 5:  # Mouse wheel scroll down
-                        if self.in_menu and self.showing_tutorial:
-                            max_scroll = getattr(self.ui, 'tutorial_max_scroll', 0)
-                            self.tutorial_scroll_offset = min(max_scroll, self.tutorial_scroll_offset + 15)
-                        elif not self.in_menu and self.game_state and self.game_state.mode in duel_modes:
-                            new_scroll_offset = min(self.max_scroll, self.scroll_offset + 30)
-                            if abs(new_scroll_offset - self.scroll_offset) > 0.1:
-                                self.scroll_offset = new_scroll_offset
-                                header_space = 80
-                                actual_maze_height = MAZE_HEIGHT * self.split_cell_size
-                                spacing = 30
-                                self.top_maze_y = header_space - self.scroll_offset
-                                self.bottom_maze_y = header_space + actual_maze_height + spacing - self.scroll_offset
+                        self.tutorial_scroll_offset = min(max_scroll, self.tutorial_scroll_offset + 30)
+                elif not self.in_menu and self.game_state and self.game_state.mode in duel_modes:
+                    if event.button == 4:  # Mouse wheel scroll up
+                        self.scroll_offset = max(0, self.scroll_offset - 30)
+                        self.calculate_split_screen_offsets()
+                    elif event.button == 5:  # Mouse wheel scroll down
+                        self.scroll_offset = min(self.max_scroll, self.scroll_offset + 30)
+                        self.calculate_split_screen_offsets()
                 
                 # Left mouse button click (button 1)
                 elif event.button == 1:
                     # If we're in the menu, check if user clicked on a mode button
-                    if self.in_menu and not self.showing_tutorial:
+                    if self.in_menu:
                         # Check which mode button was clicked (if any)
                         clicked_mode = self.ui.get_clicked_mode(event.pos)
                         
                         if clicked_mode:
-                            # Handle tutorial button
+                            # Check if tutorial button was clicked
                             if clicked_mode == 'T':
                                 self.showing_tutorial = True
+                                self.tutorial_scroll_offset = 0
                             else:
                                 # Map the clicked button key to the actual mode name
                                 # The UI returns '1', '2', etc., we need to convert to mode names
@@ -219,22 +201,20 @@ class Game:
                 # A key was pressed down (not released)
                 
                 # ====================================================================
+                # TUTORIAL CONTROLS (when showing tutorial)
+                # ====================================================================
+                if self.showing_tutorial:
+                    if event.key == pygame.K_ESCAPE or event.key == pygame.K_t:
+                        # ESC or T key closes tutorial
+                        self.showing_tutorial = False
+                        self.tutorial_scroll_offset = 0
+                    # Skip the rest of event handling if we're in tutorial
+                    continue
+                
+                # ====================================================================
                 # MENU CONTROLS (when in main menu)
                 # ====================================================================
                 if self.in_menu:
-                    # Tutorial toggle
-                    if event.key == pygame.K_t:
-                        self.showing_tutorial = not self.showing_tutorial
-                        self.tutorial_scroll_offset = 0  # Reset scroll when opening tutorial
-                        continue
-                    
-                    # If showing tutorial, only allow ESC to go back
-                    if self.showing_tutorial:
-                        if event.key == pygame.K_ESCAPE:
-                            self.showing_tutorial = False
-                            self.tutorial_scroll_offset = 0  # Reset scroll when closing
-                        continue
-                    
                     # Number keys 1-5 select game modes from the menu
                     if event.key == pygame.K_1:
                         self.start_game('Explore')
@@ -247,6 +227,10 @@ class Game:
                     elif event.key == pygame.K_5:
                         # Blind Duel mode - start directly (uses modified A* for fog of war)
                         self.start_game('Blind Duel')
+                    elif event.key == pygame.K_t:
+                        # T key opens tutorial
+                        self.showing_tutorial = True
+                        self.tutorial_scroll_offset = 0
                     elif event.key == pygame.K_ESCAPE:
                         # ESC key quits the game
                         self.running = False
@@ -554,27 +538,28 @@ class Game:
         # Clear screen
         self.screen.fill(COLORS['BACKGROUND'])
         
+        # Draw tutorial if showing tutorial
+        if self.showing_tutorial:
+            self.ui.draw_tutorial(self.tutorial_scroll_offset)
+            pygame.display.flip()
+            return
+        
         # Draw main menu if in menu mode
         if self.in_menu:
-            # Draw tutorial screen if showing, otherwise draw main menu
-            if self.showing_tutorial:
-                self.ui.draw_tutorial(self.tutorial_scroll_offset)
-            else:
-                self.ui.draw_main_menu()
+            self.ui.draw_main_menu()
             
-            # Change cursor to hand when hovering over buttons (only if not in tutorial)
-            if not self.showing_tutorial:
-                mouse_pos = pygame.mouse.get_pos()
-                hovering = False
-                for button in self.ui.menu_buttons:
-                    if button['rect'].collidepoint(mouse_pos):
-                        hovering = True
-                        break
-                
-                if hovering:
-                    pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
-                else:
-                    pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
+            # Change cursor to hand when hovering over buttons
+            mouse_pos = pygame.mouse.get_pos()
+            hovering = False
+            for button in self.ui.menu_buttons:
+                if button['rect'].collidepoint(mouse_pos):
+                    hovering = True
+                    break
+            
+            if hovering:
+                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
+            else:
+                pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
             
             pygame.display.flip()
             return
