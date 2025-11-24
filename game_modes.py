@@ -821,6 +821,10 @@ class GameState:
         """Check if player is trapped (no valid unvisited moves and no path to goal)"""
         player_pos = self.player.get_position()
         
+        # If player is at goal, they're not trapped (they won!)
+        if player_pos == self.maze.goal_pos:
+            return False
+        
         # Check if there are any valid unvisited adjacent cells
         has_unvisited_move = False
         for dx, dy in [(0, -1), (1, 0), (0, 1), (-1, 0)]:
@@ -950,6 +954,9 @@ class GameState:
                     self.message = "Victory! You visited all checkpoints in order and reached the goal first!"
                 else:
                     self.message = "Victory! You reached the goal first!"
+                from config import DEBUG_MODE
+                if DEBUG_MODE:
+                    print(f"[Win Condition] PLAYER WON! Position: {player_pos}, Checkpoints: {len(self.player.reached_checkpoints)}/{len(self.maze.checkpoints) if self.maze.checkpoints else 0}")
             elif ai_won:
                 self.game_over = True
                 self.winner = 'AI'
@@ -1004,11 +1011,15 @@ class GameState:
                 self.message = "Out of Energy! Not enough fuel for any available move!"
         
         # Check if player is trapped (no valid moves available)
+        # IMPORTANT: Only check if player is trapped if they haven't won yet
+        # (is_player_trapped already checks if player is at goal and returns False)
         if not self.game_over:
             if self.is_player_trapped():
-                self.game_over = True
-                self.winner = None
-                self.message = "Trapped! No valid moves remaining. All paths are blocked!"
+                # Double-check: if player is at goal, they won, not trapped
+                if self.player.get_position() != self.maze.goal_pos:
+                    self.game_over = True
+                    self.winner = None
+                    self.message = "Trapped! No valid moves remaining. All paths are blocked!"
     
     def get_hint(self):
         """Get hint for player's next move"""
