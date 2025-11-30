@@ -935,12 +935,11 @@ class Game:
                         
                         return total_cost
                     
-                    # Helper to round time with appropriate precision
+                    # Helper to format time with appropriate precision
+                    # Store raw time value (in milliseconds) - rounding happens in UI
                     def round_time(t):
-                        if t < 0.1:
-                            return round(t, 2)  # 2 decimal places for sub-millisecond
-                        else:
-                            return round(t, 1)  # 1 decimal place for normal times
+                        # Return raw time value - UI will format it appropriately
+                        return t
                     
                     # For Blind Duel mode, only calculate modified A* for fog of war
                     # For other modes, calculate all algorithms for comparison

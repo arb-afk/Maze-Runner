@@ -1765,11 +1765,12 @@ class UI:
                 self.screen.blit(name_text, (start_x + col_spacing[0], stats_y))
                 
                 # Stats with dark text for clarity
-                # Format time with appropriate precision (same as algorithm comparison)
+                # Format time with appropriate precision
                 time_val = results['time']
-                # Use same round_time logic as main.py
                 if time_val < 0.1:
                     time_str = f"{round(time_val, 2)}"  # 2 decimal places for sub-millisecond
+                elif time_val < 1.0:
+                    time_str = f"{round(time_val, 2)}"  # 2 decimal places for times < 1ms
                 else:
                     time_str = f"{round(time_val, 1)}"  # 1 decimal place for normal times
                 
@@ -1854,10 +1855,12 @@ class UI:
             cost_text = font_normal.render(f"{result.get('cost', 0):.1f}", True, COLORS['TEXT_SECONDARY'])
             self.screen.blit(cost_text, (header_x + column_widths[0] + column_widths[1], y))
             
-            # Format time with same precision as algorithm comparison
+            # Format time with appropriate precision
             time_val = result.get('time', 0)
             if time_val < 0.1:
                 time_str = f"{round(time_val, 2)}"  # 2 decimal places for sub-millisecond
+            elif time_val < 1.0:
+                time_str = f"{round(time_val, 2)}"  # 2 decimal places for times < 1ms
             else:
                 time_str = f"{round(time_val, 1)}"  # 1 decimal place for normal times
             time_text = font_normal.render(time_str, True, COLORS['TEXT_SECONDARY'])
