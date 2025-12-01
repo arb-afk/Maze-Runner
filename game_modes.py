@@ -1024,9 +1024,9 @@ class GameState:
             if self.is_player_trapped():
                 # Double-check: if player is at goal, they won, not trapped
                 if self.player.get_position() != self.maze.goal_pos:
-                    self.game_over = True
-                    self.winner = None
-                    self.message = "Trapped! No valid moves remaining. All paths are blocked!"
+                self.game_over = True
+                self.winner = None
+                self.message = "Trapped! No valid moves remaining. All paths are blocked!"
     
     def get_hint(self):
         """Get hint for player's next move"""

@@ -180,19 +180,19 @@ class Game:
                                 self.showing_tutorial = True
                                 self.tutorial_scroll_offset = 0
                             else:
-                                # Map the clicked button key to the actual mode name
-                                # The UI returns '1', '2', etc., we need to convert to mode names
-                                mode_map = {
-                                    '1': 'Explore',        # Mode 1: Simple exploration
-                                    '2': 'Obstacle Course', # Mode 2: Obstacles with costs
-                                    '3': 'Multi-Goal',     # Mode 3: Multiple checkpoints
-                                    '4': 'AI Duel',        # Mode 4: Race against AI
-                                    '5': 'Blind Duel'      # Mode 5: Fog of war duel
-                                }
-                                
-                                if clicked_mode in mode_map:
-                                    # Start the selected game mode
-                                    self.start_game(mode_map[clicked_mode])
+                            # Map the clicked button key to the actual mode name
+                            # The UI returns '1', '2', etc., we need to convert to mode names
+                            mode_map = {
+                                '1': 'Explore',        # Mode 1: Simple exploration
+                                '2': 'Obstacle Course', # Mode 2: Obstacles with costs
+                                '3': 'Multi-Goal',     # Mode 3: Multiple checkpoints
+                                '4': 'AI Duel',        # Mode 4: Race against AI
+                                '5': 'Blind Duel'      # Mode 5: Fog of war duel
+                            }
+                            
+                            if clicked_mode in mode_map:
+                                # Start the selected game mode
+                                self.start_game(mode_map[clicked_mode])
             
             # ====================================================================
             # KEYBOARD INPUT HANDLING
@@ -1130,7 +1130,7 @@ class Game:
                 sleep_time = target_frame_time - dt
                 await asyncio.sleep(sleep_time)
                 # Recalculate time after sleep
-                current_time = pygame.time.get_ticks() / 1000.0
+            current_time = pygame.time.get_ticks() / 1000.0
                 dt = current_time - last_frame_time
             
             last_frame_time = current_time
